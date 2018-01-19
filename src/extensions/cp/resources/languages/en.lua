@@ -692,6 +692,18 @@ return {
 	openEmbeddedSpeechCommandsHelp 		=			"Speech Commands Help",
 	openVoiceOverUtility				=			"Open Voice Over Utility",
 	createRoleForVoice					=			"Assign Voice Role",
+	enableFilenamePrefix                =           "Enable Filename Prefix",
+	setFilenamePrefix                   =           "Set Filename Prefix",
+	pleaseEnterAPrefix                  =           "Please enter a prefix",
+	useUnderscore                       =           "Use Underscore Seperator",
+	currentIncrementalNumber            =           "Incremental Number",
+	prefix                              =           "Prefix",
+	setIncrementalNumber                =           "Set Incremental Number",
+	setIncrementalNumberMessage         =           "What would you like to set the Incremental Number to?",
+	setIncrementalNumberError           =           "This value looks incorrect. Please enter a number and try again.",
+	customPrefixError                   =           "This prefix looks invalid. Please try again.",
+	generatedVoiceOver                  =           "Generated Voice Over",
+	replaceSpaceWithUnderscore          =           "Replace Spaces with Underscores",
 
 	--------------------------------------------------------------------------------
 	-- HUD:
@@ -878,9 +890,13 @@ return {
 	midi								=			"MIDI",
 	midiEditor							=			"MIDI Editor",
 	midiControls						=			"MIDI Controls",
-	midiReset							=			"Reset All MIDI Items",
+	midiResetAll						=			"Reset All Groups",
+	midiResetGroup                      =           "Reset Selected Group",
 	refreshMidi							=			"Refresh MIDI Devices",
-	midiResetConfirmation				=			"This will reset all modified MIDI items to the default values.",
+	applyTopDeviceToAll                 =           "Apply Top Device to All",
+	midiResetAllConfirmation			=			"This will reset all MIDI items across all groups to the default values.",
+	midiResetGroupConfirmation			=			"This will reset all MIDI items with the current group to the default values.",
+	midiTopDeviceToAll                  =           "This will apply the MIDI device on the top of the list to all the subsequent lines for the current group.",
 	enableMIDI							=			"Enable MIDI Controls",
 	channel								=			"Channel",
 	value								=			"Value",
@@ -890,6 +906,7 @@ return {
 	controlChange						=			"Control Change",
 	learnMIDIMessage					=			"If you press the 'Yes' button below you'll have 3 seconds to trigger any button or controller on any of your connected MIDI devices.",
 	openAudioMIDISetup					=			"Open Audio MIDI Setup",
+	noteCC                              =           "Note/CC",
 
 	--------------------------------------------------------------------------------
 	-- MIDI CONTROLS:

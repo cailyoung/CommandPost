@@ -13,10 +13,20 @@
 -- EXTENSIONS:
 --
 --------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+-- Logger:
+--------------------------------------------------------------------------------
 local log				= require("hs.logger").new("transitions")
 
+--------------------------------------------------------------------------------
+-- Hammerspoon Extensions:
+--------------------------------------------------------------------------------
 local timer				= require("hs.timer")
 
+--------------------------------------------------------------------------------
+-- CommandPost Extensions:
+--------------------------------------------------------------------------------
 local dialog			= require("cp.dialog")
 local fcp				= require("cp.apple.finalcutpro")
 
@@ -143,7 +153,7 @@ function mod.apply(action)
 	--------------------------------------------------------------------------------
 	transitions:applyItem(transition)
 
-	-- TODO: HACK: This timer exists to  work around a mouse bug in Hammerspoon Sierra
+	-- TODO: HACK: This timer exists to work around a mouse bug in Hammerspoon Sierra
 	timer.doAfter(0.1, function()
 		transitions:loadLayout(transitionsLayout)
 		if effectsLayout then effects:loadLayout(effectsLayout) end

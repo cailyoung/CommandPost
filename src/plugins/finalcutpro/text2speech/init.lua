@@ -46,6 +46,16 @@ local mod = {}
 --- Table of recent items in Text to Speech Search.
 mod.history = config.prop("textToSpeechHistory", {})
 
+--- plugins.finalcutpro.text2speech.currentIncrementalNumber
+--- Variable
+--- Current Incremental Number as number
+mod.currentIncrementalNumber = config.prop("textToSpeechCurrentIncrementalNumber", 1)
+
+--- plugins.finalcutpro.text2speech.replaceSpaceWithUnderscore
+--- Variable
+--- Replace Space with Underscore
+mod.replaceSpaceWithUnderscore = config.prop("replaceSpaceWithUnderscore", false)
+
 --- plugins.finalcutpro.text2speech.path
 --- Variable
 --- Text to Speech Path for generated files.
@@ -59,30 +69,32 @@ mod.voice = config.prop("text2speechVoice", speech.defaultVoice())
 --- plugins.finalcutpro.text2speech.tag
 --- Variable
 --- Tag that will be added to generated voice overs.
-mod.tag = config.prop("text2speechTag", "Generated Voice Over")
+mod.tag = config.prop("text2speechTag", i18n("generatedVoiceOver"))
 
 --- plugins.finalcutpro.text2speech.insertIntoTimeline
 --- Variable
 --- Boolean that sets whether or not new generated voice file are automatically added to the timeline or not.
 mod.insertIntoTimeline = config.prop("text2speechInsertIntoTimeline", true)
 
+--- plugins.finalcutpro.text2speech.enableCustomPrefix
+--- Variable
+--- Boolean that sets whether or not a custom prefix for the generated filename is enabled.
+mod.enableCustomPrefix = config.prop("text2speechEnableCustomPrefix", false)
+
+--- plugins.finalcutpro.text2speech.customPrefix
+--- Variable
+--- String which contains the custom prefix.
+mod.customPrefix = config.prop("text2speechCustomPrefix", "Custom Prefix")
+
+--- plugins.finalcutpro.text2speech.useUnderscore
+--- Variable
+--- If `true` then an underscore will be used in the Custom Prefix filename otherwise a dash will be used.
+mod.useUnderscore = config.prop("text2speechUseUnderscore", false)
+
 --- plugins.finalcutpro.text2speech.createRoleForVoice
 --- Variable
 --- Boolean that sets whether or not a tag should be added for the voice.
 mod.createRoleForVoice = config.prop("text2speechCreateRoleForVoice", true)
-
--- firstToUpper() -> string
--- Function
--- Makes the first letter in a word a capital letter.
---
--- Parameters:
---  * None
---
--- Returns:
---  * A string.
-function firstToUpper(str)
-    return (str:gsub("^%l", string.upper))
-end
 
 --- plugins.finalcutpro.text2speech.chooseFolder() -> string or false
 --- Function
@@ -187,16 +199,51 @@ local function completionFn(result)
 	--------------------------------------------------------------------------------
 	-- Determine Filename from Result:
 	--------------------------------------------------------------------------------
-	local textToSpeak = result["text"]
-	local filename = tools.safeFilename(textToSpeak, "Generated Voice Over")
-	local savePath = mod.path() .. filename .. ".aif"
-	if tools.doesFileExist(savePath) then
-		local newPathCount = 0
-		repeat
-			newPathCount = newPathCount + 1
-			savePath = mod.path() .. filename .. " " .. tostring(newPathCount) .. ".aif"
-		until not tools.doesFileExist(savePath)
-	end
+	local textToSpeak, filename, savePath
+	local prefix = mod.customPrefix()
+    if mod.enableCustomPrefix() == true and prefix and tools.trim(prefix) ~= "" then
+        --------------------------------------------------------------------------------
+        -- Enable Custom Prefix:
+        --------------------------------------------------------------------------------
+        local seperator = " - "
+        if mod.useUnderscore() then
+            seperator = "_"
+        end
+        textToSpeak = result["text"]
+        if textToSpeak and mod.replaceSpaceWithUnderscore() then
+            textToSpeak = string.gsub(textToSpeak, " ", "_")
+        end
+        filename = tools.safeFilename(textToSpeak, i18n("generatedVoiceOver"))
+        savePath = mod.path() .. prefix .. seperator .. string.format("%04d", mod.currentIncrementalNumber())  .. seperator .. filename .. ".aif"
+        if tools.doesFileExist(savePath) then
+            local newPathCount = 1
+            repeat
+                local currentIncrementalNumber = mod.currentIncrementalNumber()
+                mod.currentIncrementalNumber(currentIncrementalNumber + 1)
+                newPathCount = newPathCount + 1
+                savePath = mod.path() .. prefix .. seperator .. string.format("%04d", mod.currentIncrementalNumber()) .. seperator .. filename .. seperator .. string.format("%04d", newPathCount) .. ".aif"
+            until not tools.doesFileExist(savePath)
+        end
+        local currentIncrementalNumber = mod.currentIncrementalNumber()
+        mod.currentIncrementalNumber(currentIncrementalNumber + 1)
+    else
+        --------------------------------------------------------------------------------
+        -- No Custom Prefix:
+        --------------------------------------------------------------------------------
+        textToSpeak = result["text"]
+        if textToSpeak and mod.replaceSpaceWithUnderscore() then
+            textToSpeak = string.gsub(textToSpeak, " ", "_")
+        end
+        filename = tools.safeFilename(textToSpeak, i18n("generatedVoiceOver"))
+        savePath = mod.path() .. filename .. ".aif"
+        if tools.doesFileExist(savePath) then
+            local newPathCount = 0
+            repeat
+                newPathCount = newPathCount + 1
+                savePath = mod.path() .. filename .. " " .. string.format("%04d", newPathCount) .. ".aif"
+            until not tools.doesFileExist(savePath)
+        end
+    end
 
 	--------------------------------------------------------------------------------
 	-- Save Synthesised Voice to File:
@@ -242,11 +289,11 @@ function completeProcess()
 	-- Add Finder Tag(s):
 	--------------------------------------------------------------------------------
 	if mod.createRoleForVoice() then
-		if not fs.tagsAdd(savePath, {mod.tag(), firstToUpper(mod.voice())}) then		
-			log.ef("Failed to add Finder Tags (%s & %s) to: %s", mod.tag(), firstToUpper(mod.voice()), savePath)
+		if not fs.tagsAdd(savePath, {mod.tag(), tools.firstToUpper(mod.voice())}) then
+			log.ef("Failed to add Finder Tags (%s & %s) to: %s", mod.tag(), tools.firstToUpper(mod.voice()), savePath)
 		end
 	else
-		if not fs.tagsAdd(savePath, {mod.tag()}) then 
+		if not fs.tagsAdd(savePath, {mod.tag()}) then
 			log.ef("Failed to add Finder Tag (%s) to: %s", mod.tag(), savePath)
 		end
 	end
@@ -273,6 +320,22 @@ function completeProcess()
 		return nil
 	end
 
+    --------------------------------------------------------------------------------
+    -- Delay things until the data is actually successfully on the Clipboard:
+    --------------------------------------------------------------------------------
+    local pasteboardCheckResult = just.doUntil(function()
+        local pasteboardCheck = pasteboard.readAllData()
+        if pasteboardCheck and pasteboardCheck["public.file-url"] and pasteboardCheck["public.file-url"] == safeSavePath then
+            return true
+        else
+            return false
+        end
+    end, 0.5)
+    if not pasteboardCheckResult then
+        dialog.displayErrorMessage("The URL on the clipboard was not the same as what we wrote to the Pasteboard.")
+        return nil
+    end
+
 	--------------------------------------------------------------------------------
 	-- Check if Timeline can be enabled:
 	--------------------------------------------------------------------------------
@@ -291,7 +354,7 @@ function completeProcess()
 	if result then
 		local result = fcp:selectMenu({"Edit", "Paste as Connected Clip"})
 	else
-		dialog.displayErrorMessage("Failed to trigger the 'Paste' Shortcut in the Text to Speech Plugin.")
+		dialog.displayErrorMessage("Failed to trigger the 'Paste as Connected Clip' Shortcut in the Text to Speech Plugin.")
 		return nil
 	end
 
@@ -393,7 +456,7 @@ local function rightClickCallback()
 	voicesMenu[2] = { title = "-" }
 	for i, v in ipairs(availableVoices) do
 		voicesMenu[#voicesMenu + 1] = {
-			title = firstToUpper(v),
+			title = tools.firstToUpper(v),
 			fn = function()
 				mod.voice(v)
 			end,
@@ -426,6 +489,55 @@ local function rightClickCallback()
 			fn = function()
 				mod.chooseFolder()
 				mod.chooser:show()
+			end,
+		},
+		{ title = "-" },
+        { title = string.format(string.upper(i18n("currentIncrementalNumber")) .. ": %s", string.format("%04d",mod.currentIncrementalNumber())),
+		    disabled = true,
+		},
+        { title = string.format(string.upper(i18n("prefix")) .. ": %s", mod.customPrefix()),
+		    disabled = true,
+		},
+		{ title = "-" },
+		{ title = i18n("enableFilenamePrefix"),
+		    checked = mod.enableCustomPrefix(),
+			fn = function()
+				mod.enableCustomPrefix:toggle()
+			end,
+		},
+		{ title = i18n("useUnderscore"),
+		    checked = mod.useUnderscore(),
+			fn = function()
+				mod.useUnderscore:toggle()
+			end,
+		},
+		{ title = i18n("replaceSpaceWithUnderscore"),
+		    checked = mod.replaceSpaceWithUnderscore(),
+			fn = function()
+				mod.replaceSpaceWithUnderscore:toggle()
+			end,
+		},
+		{ title = "-" },
+		{ title = i18n("setIncrementalNumber"),
+			fn = function()
+				local result = dialog.displaySmallNumberTextBoxMessage(i18n("setIncrementalNumberMessage"), i18n("setIncrementalNumberError"), mod.currentIncrementalNumber())
+				if type(result) == "number" then
+				    mod.currentIncrementalNumber(result)
+				end
+			end,
+		},
+		{ title = i18n("setFilenamePrefix"),
+			fn = function()
+                local result = mod.customPrefix(dialog.displayTextBoxMessage(i18n("pleaseEnterAPrefix") .. ":", i18n("customPrefixError"), mod.customPrefix(), function(value)
+                    if value and type("value") == "string" and value ~= tools.trim("") and tools.safeFilename(value, value) == value then
+                        return true
+                    else
+                        return false
+                    end
+                end))
+                if type(result) == "string" then
+                    mod.customPrefix(result)
+                end
 			end,
 		},
 		{ title = "-" },

@@ -13,22 +13,39 @@
 -- EXTENSIONS:
 --
 --------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+-- Logger:
+--------------------------------------------------------------------------------
 local log										= require("hs.logger").new("prefsMgr")
 
+--------------------------------------------------------------------------------
+-- Hammerspoon Extensions:
+--------------------------------------------------------------------------------
 local geometry									= require("hs.geometry")
+local inspect                                   = require("hs.inspect")
 local screen									= require("hs.screen")
 local timer										= require("hs.timer")
 local toolbar                  					= require("hs.webview.toolbar")
 local webview									= require("hs.webview")
 
+--------------------------------------------------------------------------------
+-- CommandPost Extensions:
+--------------------------------------------------------------------------------
 local config									= require("cp.config")
 local dialog									= require("cp.dialog")
 local just										= require("cp.just")
 local tools										= require("cp.tools")
 
-local panel										= require("panel")
-
+--------------------------------------------------------------------------------
+-- 3rd Party Extensions:
+--------------------------------------------------------------------------------
 local _											= require("moses")
+
+--------------------------------------------------------------------------------
+-- Module Extensions:
+--------------------------------------------------------------------------------
+local panel										= require("panel")
 
 --------------------------------------------------------------------------------
 --
@@ -227,6 +244,16 @@ local function windowCallback(action, webview, frame)
 	if action == "closing" then
 		if not hs.shuttingDown then
 			mod.webview = nil
+
+			--------------------------------------------------------------------------------
+			-- Trigger Closing Callbacks:
+			--------------------------------------------------------------------------------
+			for _, v in ipairs(mod._panels) do
+                if v.closeFn and type(v.closeFn) == "function" then
+                    v.closeFn()
+                end
+		    end
+
 		end
 	elseif action == "focusChange" then
 	elseif action == "frameChange" then
@@ -263,7 +290,17 @@ end
 function mod.maxPanelHeight()
 	local max = mod.defaultHeight
 	for _,panel in ipairs(mod._panels) do
-		max = panel.height ~= nil and panel.height < max and max or panel.height
+	    local height
+	    if type("panel.height") == "function" then
+	        height = panel.height()
+	    else
+	        height = panel.height
+	    end
+	    if type("height") == "number" then
+	        if height > max then max = height end
+	    else
+	        log.ef("panel.height in plugins.core.preferences.manager.maxPanelHeight is invalid: %s", inspect(height))
+	    end
 	end
 	return max
 end
@@ -474,7 +511,13 @@ function mod.selectPanel(id)
 		-- Resize Panel:
 		--------------------------------------------------------------------------------
 		if panel.id == id and panel.height then
-			mod.webview:size({w = mod.defaultWidth, h = panel.height })
+		    local height
+		    if type(panel.height) == "function" then
+		        height = panel.height()
+		    else
+		        height = panel.height
+		    end
+			mod.webview:size({w = mod.defaultWidth, h = height })
 		end
 
 		local style = panel.id == id and "block" or "none"
@@ -524,6 +567,7 @@ end
 ---  ** `label`			- The human-readable label for the panel icon.
 ---	 ** `image`			- The `hs.image` for the panel icon.
 ---  ** `tooltip`		- The human-readable details for the toolbar icon when the mouse is hovering over it.
+---  ** `closeFn`       - A callback function that's triggered when the Preferences window is closed.
 function mod.addPanel(params)
 
 	local newPanel = panel.new(params, mod)
