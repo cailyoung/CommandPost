@@ -101,6 +101,7 @@ local watcher									= require("cp.watcher")
 local axutils									= require("cp.ui.axutils")
 local Browser									= require("cp.apple.finalcutpro.main.Browser")
 local CommandEditor								= require("cp.apple.finalcutpro.cmd.CommandEditor")
+local KeywordEditor								= require("cp.apple.finalcutpro.main.KeywordEditor")
 local destinations								= require("cp.apple.finalcutpro.export.destinations")
 local ExportDialog								= require("cp.apple.finalcutpro.export.ExportDialog")
 local FullScreenWindow							= require("cp.apple.finalcutpro.main.FullScreenWindow")
@@ -158,6 +159,11 @@ App.PREFS_PLIST_PATH = App.PREFS_PATH .. App.PREFS_PLIST_FILE
 --- Table of Final Cut Pro's supported Languages
 App.SUPPORTED_LANGUAGES = {"de", "en", "es", "fr", "ja", "zh_CN"}
 
+--- cp.apple.finalcutpro.EVENT_DESCRIPTION_PATH
+--- Constant
+--- The Event Description Path.
+App.EVENT_DESCRIPTION_PATH = "/Contents/Frameworks/TLKit.framework/Versions/A/Resources/EventDescriptions.plist"
+
 --- cp.apple.finalcutpro.FLEXO_LANGUAGES
 --- Constant
 --- Table of Final Cut Pro's supported Languages for the Flexo Framework
@@ -182,6 +188,15 @@ App.ALLOWED_IMPORT_IMAGE_EXTENSIONS	= {"bmp", "gif", "jpeg", "jpg", "png", "psd"
 --- Constant
 --- Table of all file extensions Final Cut Pro can import.
 App.ALLOWED_IMPORT_ALL_EXTENSIONS = fnutils.concat(App.ALLOWED_IMPORT_VIDEO_EXTENSIONS, fnutils.concat(App.ALLOWED_IMPORT_AUDIO_EXTENSIONS, App.ALLOWED_IMPORT_IMAGE_EXTENSIONS))
+
+--- cp.apple.finalcutpro.PLAYER_QUALITY
+--- Constant
+--- Table of Player Quality values used by the `FFPlayerQuality` preferences value:
+App.PLAYER_QUALITY = {
+    ["ORIGINAL_BETTER_QUALITY"]     = 10,
+    ["ORIGINAL_BETTER_PERFORMANCE"] = 5,
+    ["PROXY"]                       = 4,
+}
 
 --- cp.apple.finalcutpro:init() -> App
 --- Function
@@ -816,6 +831,22 @@ function App:commandEditor()
 		self._commandEditor = CommandEditor:new(self)
 	end
 	return self._commandEditor
+end
+
+--- cp.apple.finalcutpro:keywordEditor() -> keywordEditor object
+--- Method
+--- Returns the Final Cut Pro Keyword Editor
+---
+--- Parameters:
+---  * None
+---
+--- Returns:
+---  * The Final Cut Pro Keyword Editor
+function App:keywordEditor()
+	if not self._keywordEditor then
+		self._keywordEditor = KeywordEditor:new(self)
+	end
+	return self._keywordEditor
 end
 
 --- cp.apple.finalcutpro:mediaImport() -> mediaImport object
