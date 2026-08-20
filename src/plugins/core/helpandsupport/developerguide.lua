@@ -1,25 +1,11 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---                      D E V E L O P E R     G U I D E                       --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === plugins.core.helpandsupport.developerguide ===
 ---
 --- Developer Guide Menu Item.
 
---------------------------------------------------------------------------------
---
--- CONSTANTS:
---
---------------------------------------------------------------------------------
-local PRIORITY          = 1.1
+local require = require
 
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
+local i18n = require "cp.i18n"
+
 local mod = {}
 
 --- plugins.core.helpandsupport.developerguide.show() -> nil
@@ -32,43 +18,33 @@ local mod = {}
 --- Returns:
 ---  * None
 function mod.show()
-    os.execute('open "http://dev.commandpost.io/"')
+    os.execute('open "https://commandpost.fcp.cafe/developer/introduction/"')
 end
 
---------------------------------------------------------------------------------
---
--- THE PLUGIN:
---
---------------------------------------------------------------------------------
 local plugin = {
     id              = "core.helpandsupport.developerguide",
     group           = "core",
     dependencies    = {
-        ["core.menu.helpandsupport.commandpost"]    = "helpandsupport",
-        ["core.commands.global"]                    = "global",
+        ["core.menu.manager"] = "menuManager",
+        ["core.commands.global"] = "global",
     }
 }
 
---------------------------------------------------------------------------------
--- INITIALISE PLUGIN:
---------------------------------------------------------------------------------
 function plugin.init(deps)
-
     --------------------------------------------------------------------------------
     -- Commands:
     --------------------------------------------------------------------------------
-    local global = deps.global
-    global:add("cpDeveloperGuide")
+    deps.global
+        :add("cpDeveloperGuide")
         :whenActivated(mod.show)
         :groupedBy("helpandsupport")
 
     --------------------------------------------------------------------------------
     -- Menubar:
     --------------------------------------------------------------------------------
-    deps.helpandsupport:addItem(PRIORITY, function()
-        return { title = i18n("developerGuide"),    fn = mod.show }
-    end)
-    :addSeparator(PRIORITY+0.1)
+    deps.menuManager.commandPostHelpAndSupport
+        :addItem(6, function() return { title = i18n("developerGuide"), fn = mod.show } end)
+        :addSeparator(7)
 
     return mod
 end

@@ -1,95 +1,51 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---                       M I D I    C O N T R O L S                           --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === plugins.finalcutpro.midi.controls.zoom ===
 ---
 --- Final Cut Pro MIDI Zoom Control.
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
+local require = require
 
---------------------------------------------------------------------------------
--- Logger:
---------------------------------------------------------------------------------
-local log               = require("hs.logger").new("zoomMIDI")
+--local log               = require "hs.logger".new "zoomMIDI"
 
---------------------------------------------------------------------------------
--- CommandPost Extensions:
---------------------------------------------------------------------------------
-local fcp               = require("cp.apple.finalcutpro")
+local deferred          = require "cp.deferred"
+local fcp               = require "cp.apple.finalcutpro"
+local i18n              = require "cp.i18n"
+local tools             = require "cp.tools"
 
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
-local mod = {}
+local rescale           = tools.rescale
 
---- plugins.finalcutpro.midi.controls.zoom.control() -> nil
---- Function
---- Final Cut Pro MIDI Zoom Control
----
---- Parameters:
----  * metadata - table of metadata from the MIDI callback
----
---- Returns:
----  * None
-function mod.control(metadata)
+local function createAbsoluteMIDIZoomSlider()
     local value
-    if metadata.pitchChange then
-        value = metadata.pitchChange
-    else
-        value = metadata.fourteenBitValue
-    end
-    if type(value) == "number" then
-        local appearance = fcp:timeline():toolbar():appearance()
-        if appearance then
+
+    local appearance = fcp.timeline.toolbar.appearance
+
+    local hide = deferred.new(1.5):action(function()
+        appearance:hide()
+    end)
+
+    local updateUI = deferred.new(0.01):action(function()
+        appearance:show()
+        appearance.zoomAmount(value)
+        hide()
+    end)
+    return function(metadata)
+        if metadata.fourteenBitCommand or metadata.pitchChange then
             --------------------------------------------------------------------------------
-            -- MIDI Controller Value (7bit):        0 to 127
-            -- MIDI Controller Value (14bit):       0 to 16383
-            -- Zoom Slider:                         0 to 10
+            -- 14bit:
             --------------------------------------------------------------------------------
-            appearance:show():zoomAmount():setValue(value / (16383/10))
+            local midiValue = metadata.pitchChange or metadata.fourteenBitValue
+            value = rescale(midiValue, 0, 16383, 0, 10)
+            updateUI()
+        else
+            --------------------------------------------------------------------------------
+            -- 7bit:
+            --------------------------------------------------------------------------------
+            local controllerValue = metadata.controllerValue
+            value = rescale(controllerValue, 0, 127, 0, 10)
+            updateUI()
         end
-    else
-        log.ef("Unexpected Value: %s %s", value, value and type(value))
     end
 end
 
---- plugins.finalcutpro.midi.controls.zoom.init() -> nil
---- Function
---- Initialise the module.
----
---- Parameters:
----  * None
----
---- Returns:
----  * None
-function mod.init()
-
-    local params = {
-        group = "fcpx",
-        text = string.upper(i18n("midi")) .. ": " .. i18n("timelineZoom"),
-        subText = i18n("midiTimelineZoomDescription"),
-        fn = mod.control,
-    }
-    mod._manager.controls:new("zoomSlider", params)
-
-    return mod
-
-end
-
---------------------------------------------------------------------------------
---
--- THE PLUGIN:
---
---------------------------------------------------------------------------------
 local plugin = {
     id              = "finalcutpro.midi.controls.zoom",
     group           = "finalcutpro",
@@ -98,12 +54,21 @@ local plugin = {
     }
 }
 
---------------------------------------------------------------------------------
--- INITIALISE PLUGIN:
---------------------------------------------------------------------------------
 function plugin.init(deps)
-    mod._manager = deps.manager
-    return mod.init()
+    --------------------------------------------------------------------------------
+    -- Only load plugin if FCPX is supported:
+    --------------------------------------------------------------------------------
+    if not fcp:isSupported() then return end
+
+    local manager = deps.manager
+
+    local params = {
+        group = "fcpx",
+        text = i18n("timelineZoom") .. " (" .. i18n("absolute") .. ")",
+        subText = i18n("midiTimelineZoomDescription"),
+        fn = createAbsoluteMIDIZoomSlider(),
+    }
+    manager.controls:new("zoomSlider", params)
 end
 
 return plugin

@@ -1,34 +1,13 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---                   C  O  M  M  A  N  D  P  O  S  T                          --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === plugins.finalcutpro.timeline.selectalltimelineclips ===
 ---
 --- Select All Timeline Clips
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
+local require   = require
 
---------------------------------------------------------------------------------
--- Logger:
---------------------------------------------------------------------------------
-local log                               = require("hs.logger").new("selectalltimelineclips")
+local log       = require("hs.logger").new("selectalltimelineclips")
 
---------------------------------------------------------------------------------
--- CommandPost Extensions:
---------------------------------------------------------------------------------
-local fcp                               = require("cp.apple.finalcutpro")
+local fcp       = require("cp.apple.finalcutpro")
 
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
 local mod = {}
 
 --- plugins.finalcutpro.timeline.selectalltimelineclips(forwards) -> boolean
@@ -42,10 +21,10 @@ local mod = {}
 ---  * `true` if successful otherwise `false`
 function mod.selectAllTimelineClips(forwards)
 
-    local content = fcp:timeline():contents()
-    local playheadX = content:playhead():getPosition()
+    local content = fcp.timeline.contents
+    local playheadX = content.playhead:position()
 
-    local clips = content:clipsUI(false, function(clip)
+    local clips = content:clipsUI(true, function(clip)
         local frame = clip:frame()
         if forwards then
             return playheadX <= frame.x
@@ -64,11 +43,6 @@ function mod.selectAllTimelineClips(forwards)
 
 end
 
---------------------------------------------------------------------------------
---
--- THE PLUGIN:
---
---------------------------------------------------------------------------------
 local plugin = {
     id = "finalcutpro.timeline.selectalltimelineclips",
     group = "finalcutpro",
@@ -77,26 +51,59 @@ local plugin = {
     }
 }
 
---------------------------------------------------------------------------------
--- INITIALISE PLUGIN:
---------------------------------------------------------------------------------
 function plugin.init(deps)
+    --------------------------------------------------------------------------------
+    -- Only load plugin if Final Cut Pro is supported:
+    --------------------------------------------------------------------------------
+    if not fcp:isSupported() then return end
 
     --------------------------------------------------------------------------------
     -- Add Commands:
     --------------------------------------------------------------------------------
-    if deps.fcpxCmds then
-        deps.fcpxCmds:add("cpSelectForward")
-            :activatedBy():ctrl():option():cmd("right")
-            :whenActivated(function() mod.selectAllTimelineClips(true) end)
+    local fcpxCmds = deps.fcpxCmds
+    fcpxCmds
+        :add("cpSelectForward")
+        :activatedBy():ctrl():option():cmd("right")
+        :whenActivated(function() mod.selectAllTimelineClips(true) end)
 
-        deps.fcpxCmds:add("cpSelectBackwards")
-            :activatedBy():ctrl():option():cmd("left")
-            :whenActivated(function() mod.selectAllTimelineClips(false) end)
-    end
+    fcpxCmds
+        :add("cpSelectBackwards")
+        :activatedBy():ctrl():option():cmd("left")
+        :whenActivated(function() mod.selectAllTimelineClips(false) end)
+
+    fcpxCmds
+        :add("cpSelectAllEvenClips")
+        :whenActivated(function()
+            fcp:launch()
+            local contents = fcp.timeline.contents
+            local clips = contents:clipsUI()
+            table.sort(clips, function(a, b) return a.AXPosition.x < b.AXPosition.x end)
+            local evenClips = {}
+            for i, clip in ipairs(clips) do
+                if (i % 2 == 0) then
+                    table.insert(evenClips, clip)
+                end
+            end
+            contents:selectClips(evenClips)
+        end)
+
+    fcpxCmds
+        :add("cpSelectAllOddClips")
+        :whenActivated(function()
+            fcp:launch()
+            local contents = fcp.timeline.contents
+            local clips = contents:clipsUI()
+            table.sort(clips, function(a, b) return a.AXPosition.x < b.AXPosition.x end)
+            local oddClips = {}
+            for i, clip in ipairs(clips) do
+                if not (i % 2 == 0) then
+                    table.insert(oddClips, clip)
+                end
+            end
+            contents:selectClips(oddClips)
+        end)
 
     return mod
-
 end
 
 return plugin

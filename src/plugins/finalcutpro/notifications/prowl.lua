@@ -1,51 +1,20 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---                  P R O W L     N O T I F I C A T I O N S                   --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === plugins.finalcutpro.notifications.prowl ===
 ---
 --- Prowl Notifications Plugin.
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
+local require = require
 
---------------------------------------------------------------------------------
--- Hammerspoon Extensions:
---------------------------------------------------------------------------------
-local dialog                                    = require("hs.dialog")
-local http                                      = require("hs.http")
+local dialog        = require "hs.dialog"
+local http          = require "hs.http"
 
---------------------------------------------------------------------------------
--- CommandPost Extensions:
---------------------------------------------------------------------------------
-local config                                    = require("cp.config")
+local config        = require "cp.config"
+local fcp           = require "cp.apple.finalcutpro"
+local html          = require "cp.web.html"
+local i18n          = require "cp.i18n"
+local ui            = require "cp.web.ui"
 
---------------------------------------------------------------------------------
--- 3rd Party Extensions:
---------------------------------------------------------------------------------
-local slaxdom                                   = require("slaxml.slaxdom")
+local slaxdom       = require "slaxml.slaxdom"
 
---------------------------------------------------------------------------------
---
--- CONSTANTS:
---
---------------------------------------------------------------------------------
-
--- PRIORITY -> number
--- Constant
--- The menubar position priority.
-local PRIORITY = 200
-
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
 local mod = {}
 
 --- plugins.finalcutpro.notifications.prowl.apiValidated <cp.prop: boolean>
@@ -156,17 +125,12 @@ function mod.sendNotification(message, optionalTitle)
             return true
         else
             local xml = slaxdom:dom(tostring(httpBody))
-            local errorMessage = xml['root']['el'][1]['kids'][1]['value'] or "  - " .. i18n("unknownError")
+            local errorMessage = xml['root']['el'][1]['kids'][1]['value'] or ("  - " .. i18n("unknownError"))
             return false, errorMessage
         end
     end
 end
 
---------------------------------------------------------------------------------
---
--- THE PLUGIN:
---
---------------------------------------------------------------------------------
 local plugin = {
     id = "finalcutpro.notifications.prowl",
     group = "finalcutpro",
@@ -177,10 +141,12 @@ local plugin = {
     }
 }
 
---------------------------------------------------------------------------------
--- INITIALISE PLUGIN:
---------------------------------------------------------------------------------
 function plugin.init(deps)
+    --------------------------------------------------------------------------------
+    -- Only load plugin if FCPX is supported:
+    --------------------------------------------------------------------------------
+    if not fcp:isSupported() then return end
+
     mod.init(deps.manager)
 
     --------------------------------------------------------------------------------
@@ -188,30 +154,28 @@ function plugin.init(deps)
     --------------------------------------------------------------------------------
     if deps.prefs then
         deps.prefs
-            :addContent(PRIORITY+1, [[
-                <style>
-                    .prowlEnable {
-                        margin-bottom: 10px !important;
-                    }
-                    .testProwl {
-                        float:left;
-                        margin-top: 5px;
-                        margin-bottom: 10px;
-                        clear: both;
-                    }
-                    .getProwlAccount {
-                        float:left;
-                        margin-top: 5px;
-                        margin-bottom: 10px;
-                        margin-left:-15px;
-                    }
-                </style>
-                <br />
-                <br />
-                <hr />
-            ]], true)
-            :addHeading(PRIORITY+2, i18n("prowlNotifications"))
-            :addCheckbox(PRIORITY+3,
+            :addContent(201, ui.style ([[
+                .prowlEnable {
+                    margin-bottom: 10px !important;
+                }
+                .testProwl {
+                    float:left;
+                    margin-top: 5px;
+                    margin-bottom: 10px;
+                    clear: both;
+                }
+                .getProwlAccount {
+                    float:left;
+                    margin-top: 5px;
+                    margin-bottom: 10px;
+                    margin-left:-15px;
+                }]]) ..
+                html.br() ..
+                html.br() ..
+                html.hr()
+            )
+            :addHeading(202, i18n("prowlNotifications"))
+            :addCheckbox(203,
                 {
                     label = i18n("enableProwlNotifications"),
                     onchange = function(_, params)
@@ -230,10 +194,10 @@ function plugin.init(deps)
                     class = "prowlEnable",
                 }
             )
-            :addTextbox(PRIORITY+4,
+            :addTextbox(204,
                 {
                     label = i18n("prowlAPIKey") .. ":",
-                    value = mod.apiKey(),
+                    value = function() return mod.apiKey() end,
                     class = "api",
                     onchange = function(_, params)
                         mod.apiKey(params.value)
@@ -251,8 +215,9 @@ function plugin.init(deps)
                     end,
                 }
             )
-            :addButton(PRIORITY+5,
+            :addButton(205,
                 {
+                    width = 200,
                     label = i18n("sendTestNotification"),
                     onclick = function()
                         local success, errorMessage = mod.sendNotification(i18n("thisIsATest"), i18n("testTitle"))
@@ -263,8 +228,9 @@ function plugin.init(deps)
                     class = "testProwl",
                 }
             )
-            :addButton(PRIORITY+6,
+            :addButton(206,
                 {
+                    width = 200,
                     label = i18n("getProwlAccount"),
                     onclick = function()
                         os.execute("open https://www.prowlapp.com/register.php")

@@ -1,77 +1,19 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---                    P R O X Y    I C O N    P L U G I N                     --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === plugins.finalcutpro.menu.proxyicon ===
 ---
 --- Final Cut Pro Proxy Icon Plugin.
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
+local require           = require
 
---------------------------------------------------------------------------------
--- CommandPost Extensions:
---------------------------------------------------------------------------------
-local config            = require("cp.config")
-local fcp               = require("cp.apple.finalcutpro")
+local config            = require "cp.config"
+local fcp               = require "cp.apple.finalcutpro"
+local i18n              = require "cp.i18n"
 
---------------------------------------------------------------------------------
---
--- CONSTANTS:
---
---------------------------------------------------------------------------------
-
--- ENABLED_DEFAULT -> boolean
--- Constant
--- Whether or not the Proxy Icon is enabled by default.
-local ENABLED_DEFAULT = false
-
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
 local mod = {}
 
--- PROXY_ICON -> string
--- Constant
--- Proxy Icon
-mod.PROXY_ICON = "🔴"
-
--- ORIGINAL_ICON -> string
--- Constant
--- Original Icon
-mod.ORIGINAL_ICON = "🔵"
-
---- plugins.finalcutpro.menu.proxyicon.procyMenuIconEnabled <cp.prop: boolean>
---- Constant
---- Toggles the Enable Proxy Menu Icon
-mod.enabled = config.prop("enableProxyMenuIcon", ENABLED_DEFAULT):watch(function(enabled)
-    if enabled then
-        --------------------------------------------------------------------------------
-        -- Update Menubar Icon on Final Cut Pro Preferences Update:
-        --------------------------------------------------------------------------------
-        mod._fcpWatchID = fcp:watch({
-            preferences = function()
-                mod.menuManager:updateMenubarIcon()
-            end,
-        })
-    else
-        --------------------------------------------------------------------------------
-        -- Destroy Watchers:
-        --------------------------------------------------------------------------------
-        if mod._fcpWatchID and mod._fcpWatchID.id then
-            fcp:unwatch(mod._fcpWatchID.id)
-            mod._fcpWatchID = nil
-        end
-    end
-    mod.menuManager:updateMenubarIcon()
-end)
+--- plugins.finalcutpro.menu.proxyicon.usingProxies -> <cp.prop: boolean>
+--- Field
+--- Using Proxies?
+mod.usingProxies = fcp.viewer.usingProxies
 
 --- plugins.finalcutpro.menu.proxyicon.generateProxyTitle() -> string
 --- Function
@@ -84,58 +26,82 @@ end)
 ---  * String containing the Proxy Title
 function mod.generateProxyTitle()
     if mod.enabled() then
-        local FFPlayerQuality = fcp:getPreference("FFPlayerQuality")
-        if FFPlayerQuality == fcp.PLAYER_QUALITY.PROXY then
-            return " " .. mod.PROXY_ICON
-        else
-            return " " .. mod.ORIGINAL_ICON
-        end
+        return mod.usingProxies() and " " .. "🔴" or " " .. "🔵"
     end
     return ""
 end
 
---------------------------------------------------------------------------------
---
--- THE PLUGIN:
---
---------------------------------------------------------------------------------
+--- plugins.finalcutpro.menu.proxyicon.procyMenuIconEnabled <cp.prop: boolean>
+--- Constant
+--- Toggles the Enable Proxy Menu Icon
+mod.enabled = config.prop("enableProxyMenuIcon", false)
+
+--- plugins.finalcutpro.menu.proxyicon.init(menuManager) -> none
+--- Function
+--- Initalise the module.
+---
+--- Parameters:
+---  * menuManager - The menu manager plugin
+---
+--- Returns:
+---  * None
+function mod.init(menuManager)
+    --------------------------------------------------------------------------------
+    -- Add Title Suffix Function:
+    --------------------------------------------------------------------------------
+    menuManager.addTitleSuffix(mod.generateProxyTitle)
+
+    local function updateMenubarIcon()
+        menuManager:updateMenubarIcon()
+    end
+
+    mod.enabled:watch(function(enabled)
+        if enabled then
+            mod.usingProxies:watch(updateMenubarIcon, true)
+        else
+            mod.usingProxies:unwatch(updateMenubarIcon)
+        end
+    end, true)
+
+end
+
 local plugin = {
     id              = "finalcutpro.menu.proxyicon",
     group           = "finalcutpro",
     dependencies    = {
-        ["finalcutpro.preferences.app"] = "prefs",
-        ["core.menu.manager"]                           = "menuManager",
+        ["finalcutpro.preferences.manager"]     = "prefs",
+        ["core.menu.manager"]               = "menuManager",
     }
 }
 
---------------------------------------------------------------------------------
--- INITIALISE PLUGIN:
---------------------------------------------------------------------------------
 function plugin.init(deps)
+    --------------------------------------------------------------------------------
+    -- Only load plugin if FCPX is supported:
+    --------------------------------------------------------------------------------
+    if not fcp:isSupported() then return end
 
     --------------------------------------------------------------------------------
-    -- Add Title Suffix Function:
+    -- Initalise the module:
     --------------------------------------------------------------------------------
-    mod.menuManager = deps.menuManager
-    mod.menuManager.addTitleSuffix(mod.generateProxyTitle)
+    mod.init(deps.menuManager)
 
     --------------------------------------------------------------------------------
     -- Setup Menubar Preferences Panel:
     --------------------------------------------------------------------------------
-    if deps.prefs.panel then
-        deps.prefs.panel:addHeading(30, i18n("menubarHeading"))
-
-        :addCheckbox(31,
-            {
-                label = i18n("displayProxyOriginalIcon"),
-                onchange = function(_, params) mod.enabled(params.checked) end,
-                checked = mod.enabled,
-            }
-        )
+    local panel = deps.prefs.panel
+    if panel then
+        panel
+            :addHeading(30, i18n("menubarHeading"))
+            :addCheckbox(31,
+                {
+                    label = i18n("displayProxyOriginalIcon"),
+                    onchange = function(_, params) mod.enabled(params.checked) end,
+                    checked = mod.enabled,
+                }
+            )
     end
 
     return mod
-
 end
 
 return plugin

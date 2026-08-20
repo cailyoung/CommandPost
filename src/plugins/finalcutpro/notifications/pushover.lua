@@ -1,52 +1,20 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---                 P U S H O V E R     N O T I F I C A T I O N S              --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === plugins.finalcutpro.notifications.pushover ===
 ---
 --- Pushover Notifications Plugin.
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
+local require = require
 
---------------------------------------------------------------------------------
--- Logger:
---------------------------------------------------------------------------------
-local log                                       = require("hs.logger").new("pushover")
+local log               = require "hs.logger".new "pushover"
 
---------------------------------------------------------------------------------
--- Hammerspoon Extensions:
---------------------------------------------------------------------------------
-local http                                      = require("hs.http")
-local json                                      = require("hs.json")
-local dialog                                    = require("hs.dialog")
+local http              = require "hs.http"
+local json              = require "hs.json"
+local dialog            = require "hs.dialog"
+local i18n              = require "cp.i18n"
 
---------------------------------------------------------------------------------
--- CommandPost Extensions:
---------------------------------------------------------------------------------
-local config                                    = require("cp.config")
+local config            = require "cp.config"
+local fcp               = require "cp.apple.finalcutpro"
+local ui                = require "cp.web.ui"
 
---------------------------------------------------------------------------------
---
--- CONSTANTS:
---
---------------------------------------------------------------------------------
-
--- PRIORITY -> number
--- Constant
--- The menubar position priority.
-local PRIORITY = 100
-
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
 local mod = {}
 
 --- plugins.finalcutpro.notifications.pushover.userAPIKey <cp.prop: string>
@@ -195,11 +163,6 @@ function mod.sendNotification(message, optionalTitle)
 
 end
 
---------------------------------------------------------------------------------
---
--- THE PLUGIN:
---
---------------------------------------------------------------------------------
 local plugin = {
     id = "finalcutpro.notifications.pushover",
     group = "finalcutpro",
@@ -210,10 +173,12 @@ local plugin = {
     }
 }
 
---------------------------------------------------------------------------------
--- INITIALISE PLUGIN:
---------------------------------------------------------------------------------
 function plugin.init(deps)
+    --------------------------------------------------------------------------------
+    -- Only load plugin if FCPX is supported:
+    --------------------------------------------------------------------------------
+    if not fcp:isSupported() then return end
+
     mod.init(deps.manager)
 
     --------------------------------------------------------------------------------
@@ -221,28 +186,26 @@ function plugin.init(deps)
     --------------------------------------------------------------------------------
     if deps.prefs then
         deps.prefs
-            :addContent(PRIORITY, [[
-                <style>
-                    .validatePushover {
-                        float:left;
-                        margin-bottom: 10px;
-                    }
-                    .sendTestNotification {
-                        clear: both;
-                        float:left;
-                        margin-top: 5px;
-                        margin-bottom: 10px;
-                    }
-                    .pushoverButtons {
-                        float:left;
-                        margin-left: -15px;
-                        margin-top: 5px;
-                        margin-bottom: 10px;
-                    }
-                </style>
-            ]], true)
-            :addHeading(PRIORITY+1, i18n("pushoverNotifications"))
-            :addCheckbox(PRIORITY+2,
+            :addContent(100, ui.style ([[
+                .validatePushover {
+                    float:left;
+                    margin-bottom: 10px;
+                }
+                .sendTestNotification {
+                    clear: both;
+                    float:left;
+                    margin-top: 5px;
+                    margin-bottom: 10px;
+                }
+                .pushoverButtons {
+                    float:left;
+                    margin-left: -15px;
+                    margin-top: 5px;
+                    margin-bottom: 10px;
+                }
+            ]]))
+            :addHeading(101, i18n("pushoverNotifications"))
+            :addCheckbox(102,
                 {
                     label = i18n("enablePushoverNotifications"),
                     onchange = function(_, params)
@@ -263,8 +226,9 @@ function plugin.init(deps)
                     id = "pushoverEnable",
                 }
             )
-            :addButton(PRIORITY+3,
+            :addButton(103,
                 {
+                    width = 200,
                     label = i18n("sendTestNotification"),
                     onclick = function()
                         if mod.apiValidated() then
@@ -280,8 +244,9 @@ function plugin.init(deps)
                     class = "sendTestNotification",
                 }
             )
-            :addButton(PRIORITY+4,
+            :addButton(104,
                 {
+                    width = 200,
                     label = i18n("pushoverSignup"),
                     onclick = function()
                         os.execute('open "https://pushover.net/login"')
@@ -289,8 +254,9 @@ function plugin.init(deps)
                     class = "pushoverButtons",
                 }
             )
-            :addButton(PRIORITY+5,
+            :addButton(105,
                 {
+                    width = 200,
                     label = i18n("getCommandPostPushoverAPIKey"),
                     onclick = function()
                         os.execute('open "https://pushover.net/apps/clone/commandpost"')
@@ -299,10 +265,10 @@ function plugin.init(deps)
                 }
             )
 
-            :addTextbox(PRIORITY+6,
+            :addTextbox(106,
                 {
                     label = i18n("userAPIKey") .. ":",
-                    value = mod.userAPIKey(),
+                    value = function() return mod.userAPIKey() end,
                     class = "api",
                     id = "pushoverUserAPIKey",
                     onchange = function(_, params)
@@ -315,10 +281,10 @@ function plugin.init(deps)
                     end,
                 }
             )
-            :addTextbox(PRIORITY+7,
+            :addTextbox(107,
                 {
                     label = i18n("applicationAPIKey") .. ":",
-                    value = mod.appAPIKey(),
+                    value = function() return mod.appAPIKey() end,
                     class = "api",
                     id = "pushoverAppAPIKey",
                     onchange = function(_, params)
@@ -331,8 +297,9 @@ function plugin.init(deps)
                     end,
                 }
             )
-            :addButton(PRIORITY+8,
+            :addButton(108,
                 {
+                    width = 200,
                     label = i18n("validate"),
                     onclick = function()
                         if not mod.userAPIKey() or not mod.appAPIKey() then

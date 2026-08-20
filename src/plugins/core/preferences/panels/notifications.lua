@@ -1,34 +1,18 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---        N O T I F I C A T I O N S    P R E F E R E N C E S    P A N E L     --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === plugins.core.preferences.panels.notifications ===
 ---
 --- Notifications Preferences Panel
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
+local require           = require
 
---------------------------------------------------------------------------------
--- Hammerspoon Extensions:
---------------------------------------------------------------------------------
-local image                                     = require("hs.image")
+local image             = require "hs.image"
 
---------------------------------------------------------------------------------
--- CommandPost Extensions:
---------------------------------------------------------------------------------
-local tools                                     = require("cp.tools")
+local config            = require "cp.config"
+local fcp               = require "cp.apple.finalcutpro"
+local i18n              = require "cp.i18n"
+local tools             = require "cp.tools"
 
---------------------------------------------------------------------------------
---
--- THE PLUGIN:
---
---------------------------------------------------------------------------------
+local imageFromPath     = image.imageFromPath
+
 local plugin = {
     id              = "core.preferences.panels.notifications",
     group           = "core",
@@ -37,17 +21,24 @@ local plugin = {
     }
 }
 
---------------------------------------------------------------------------------
--- INITIALISE PLUGIN:
---------------------------------------------------------------------------------
 function plugin.init(deps)
+    --------------------------------------------------------------------------------
+    -- Only load plugin if Final Cut Pro is supported:
+    --
+    -- NOTE: Because this is a Core Plugin, it shouldn't require FCPX, however
+    --       currently the Notifications preferences panel is only used for
+    --       Final Cut Pro, so there's no point showing an empty panel if FCPX
+    --       is not installed.
+    --------------------------------------------------------------------------------
+    if not fcp:isSupported() then return end
+
     return deps.manager.addPanel({
         priority    = 2025,
         id          = "notifications",
         label       = i18n("notificationsPanelLabel"),
-        image       = image.imageFromPath(tools.iconFallback("/System/Library/PreferencePanes/Notifications.prefPane/Contents/Resources/Notifications.icns")),
+        image       = imageFromPath(config.bundledPluginsPath .. "/core/preferences/panels/images/Notifications.icns"),
         tooltip     = i18n("notificationsPanelTooltip"),
-        height      = 620,
+        height      = 810,
     })
 end
 

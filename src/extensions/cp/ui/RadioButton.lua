@@ -1,123 +1,230 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---                   F I N A L    C U T    P R O    A P I                     --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === cp.ui.RadioButton ===
 ---
 --- Radio Button Module.
+---
+--- This represents an `hs.axuielement` with a `AXRadioButton` role.
+--- It allows checking and modifying the `checked` status like so:
+---
+--- ```lua
+--- myButton:checked() == true			-- happens to be checked already
+--- myButton:checked(false) == false	-- update to unchecked.
+--- myButton.checked:toggle() == true	-- toggled back to being checked.
+--- ```
+---
+--- You can also call instances of `RadioButton` as a function, which will return
+--- the `checked` status:
+---
+--- ```lua
+--- myButton() == true			-- still true
+--- myButton(false) == false	-- now false
+--- ```
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
-local axutils						= require("cp.ui.axutils")
+local require       = require
 
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
-local RadioButton = {}
+local Element       = require "cp.ui.Element"
+local go            = require "cp.rx.go"
 
--- TODO: Add documentation
-function RadioButton.matches(element)
-	return element:attributeValue("AXRole") == "AXRadioButton"
-end
+local If            = go.If
+local Do            = go.Do
 
---- cp.ui.RadioButton:new(axuielement, function) -> RadioButton
+local RadioButton = Element:subclass("cp.ui.RadioButton")
+
+--- cp.ui.RadioButton.matches(element) -> boolean
 --- Function
---- Creates a new RadioButton
-function RadioButton:new(parent, finderFn)
-	local o = {_parent = parent, _finder = finderFn}
-	setmetatable(o, self)
-	self.__index = self
-	return o
+--- Checks if the provided `hs.axuielement` is a RadioButton.
+---
+--- Parameters:
+---  * element		- The `axuielement` to check.
+---
+--- Returns:
+---  * `true` if it's a match, or `false` if not.
+function RadioButton.static.matches(element)
+    return Element.matches(element) and element:attributeValue("AXRole") == "AXRadioButton"
 end
 
--- TODO: Add documentation
-function RadioButton:parent()
-	return self._parent
+--- cp.ui.RadioButton(axuielement, function) -> RadioButton
+--- Method
+--- Creates a new RadioButton.
+---
+--- Parameters:
+---  * parent		- The parent object.
+---  * finderFn		- A function which will return the `hs.axuielement` when available.
+---
+--- Returns:
+---  * The new `RadioButton`.
+function RadioButton:initialize(parent, finderFn)
+    Element.initialize(self, parent, finderFn)
 end
 
-function RadioButton:isShowing()
-	return self:UI() ~= nil and self:parent():isShowing()
+--- cp.ui.RadioButton.checked <cp.prop: boolean>
+--- Field
+--- Indicates if the checkbox is currently checked. May be set by calling as a function with `true` or `false` to the function.
+function RadioButton.lazy.prop:checked()
+    return self.UI:mutate(
+        function(original) -- get
+            local ui = original()
+            return ui and ui:attributeValue("AXValue") == 1
+        end,
+        function(value, original) -- set
+            local ui = original()
+            if ui and value ~= (ui:attributeValue("AXValue") == 1) then
+                ui:performAction("AXPress")
+            end
+        end
+    )
 end
 
--- TODO: Add documentation
-function RadioButton:UI()
-	return axutils.cache(self, "_ui", function()
-		return self._finder()
-	end,
-	RadioButton.matches)
-end
-
--- TODO: Add documentation
-function RadioButton:isChecked()
-	local ui = self:UI()
-	return ui and ui:value() == 1
-end
-
--- TODO: Add documentation
-function RadioButton:check()
-	local ui = self:UI()
-	if ui and ui:value() == 0 then
-		ui:doPress()
-	end
-	return self
-end
-
--- TODO: Add documentation
-function RadioButton:uncheck()
-	local ui = self:UI()
-	if ui and ui:value() == 1 then
-		ui:doPress()
-	end
-	return self
-end
-
--- TODO: Add documentation
+--- cp.ui.RadioButton:toggle() -> self
+--- Method
+--- Toggles the `checked` status of the button.
+---
+--- Parameters:
+---  * None
+---
+--- Returns:
+---  * The `RadioButton` instance.
 function RadioButton:toggle()
-	local ui = self:UI()
-	if ui then
-		ui:doPress()
-	end
-	return self
+    self.checked:toggle()
+    return self
 end
 
--- TODO: Add documentation
-function RadioButton:isEnabled()
-	local ui = self:UI()
-	return ui and ui:enabled()
+--- cp.ui.RadioButton:doToggle() -> cp.rx.go.Statement
+--- Method
+--- Returns a `Statement` that will toggle the button value when executed, if available at the time. If not an `error` is sent.
+---
+--- Parameters:
+---  * None
+---
+--- Returns:
+---  * The `Statement` which will toggle the button when executed.
+function RadioButton.lazy.method:doToggle()
+    return If(self.UI)
+    :Then(function()
+        self.checked:toggle()
+        return true
+    end)
+    :Otherwise(false)
+    :ThenYield()
 end
 
--- TODO: Add documentation
+--- cp.ui.RadioButton:doCheck() -> cp.rx.go.Statement
+--- Method
+--- Returns a `Statement` that will check the button value when executed, if available at the time. If not an `error` is sent.
+---
+--- Parameters:
+---  * None
+---
+--- Returns:
+---  * The `Statement` which will toggle the button when executed.
+function RadioButton.lazy.method:doCheck()
+    return If(self.UI):Then(function()
+        self:checked(true)
+    end)
+end
+
+--- cp.ui.RadioButton:doUncheck() -> cp.rx.go.Statement
+--- Method
+--- Returns a `Statement` that will uncheck the button value when executed, if available at the time. If not an `error` is sent.
+---
+--- Parameters:
+---  * None
+---
+--- Returns:
+---  * The `Statement` which will toggle the button when executed.
+function RadioButton.lazy.method:doUncheck()
+    return If(self.UI):Then(function()
+        self:checked(false)
+    end)
+end
+
+--- cp.ui.RadioButton:press() -> self
+--- Method
+--- Attempts to press the button. May fail if the `UI` is not available.
+---
+--- Parameters:
+---  * None
+---
+--- Returns:
+--- The `RadioButton` instance.
 function RadioButton:press()
-	local ui = self:UI()
-	if ui then
-		ui:doPress()
-	end
-	return self
+    local ui = self:UI()
+    if ui then
+        ui:performAction("AXPress")
+    end
+    return self
 end
 
--- TODO: Add documentation
+--- cp.ui.RadioButton:doPress() -> cp.rx.go.Statement
+--- Method
+--- Returns a `Statement` that will press the button when executed, if available at the time. If not an `error` is sent.
+---
+--- Parameters:
+---  * None
+---
+--- Returns:
+---  * The `Statement` which will press the button when executed.
+function RadioButton.lazy.method:doPress()
+    return Do(self:doPerformAction("AXPress"))
+    :ThenYield()
+end
+
+--- cp.ui.RadioButton:saveLayout() -> table
+--- Method
+--- Returns a `table` with the button's current state. This can be passed to [#loadLayout] later to restore the original state.
+---
+--- Parameters:
+---  * None
+---
+--- Returns:
+---  * The table of the layout state.
 function RadioButton:saveLayout()
-	return {
-		checked = self:isChecked()
-	}
+    local layout = Element.saveLayout(self)
+    layout.checked = self:checked()
+    return layout
 end
 
--- TODO: Add documentation
+--- cp.ui.RadioButton:loadLayout(layout) -> nil
+--- Method
+--- Processes the `layout` table to restore this to match the provided `layout`.
+---
+--- Parameters:
+---  * layout - the table of state values to restore to.
+---
+--- Returns:
+---  * None
 function RadioButton:loadLayout(layout)
-	if layout then
-		if layout.checked then
-			self:check()
-		else
-			self:uncheck()
-		end
-	end
+    Element.loadLayout(self, layout)
+    if layout then
+        self:checked(layout.checked)
+    end
+end
+
+--- cp.ui.RadioButton:doLayout(layout) -> cp.rx.go.Statement
+--- Method
+--- Returns a [Statement](cp.rx.go.Statement.md) that will apply the layout provided, if possible.
+---
+--- Parameters:
+---  * layout - the `table` containing the layout configuration. Usually created via the [#saveLayout] method.
+---
+--- Returns:
+---  * The [Statement](cp.rx.go.Statement.md).
+function RadioButton:doLayout(layout)
+    layout = layout or {}
+    return Do(Element.doLayout(self, layout))
+    :Then(
+        If(self.checked):IsNot(layout.checked)
+        :Then(self:doPress())
+        :Otherwise(true)
+    )
+    :Label("cp.ui.RadioButton:doLayout(layout)")
+end
+
+-- Allows the RadioButton to be called as a function and will return the `checked` value.
+function RadioButton.__call(self, parent, value)
+    if parent and parent ~= self:parent() then
+        value = parent
+    end
+    return self:checked(value)
 end
 
 return RadioButton

@@ -1,105 +1,54 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---                   C  O  M  M  A  N  D  P  O  S  T                          --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === plugins.finalcutpro.timeline.movetoplayhead ===
 ---
 --- Move To Playhead.
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
+local require = require
 
---------------------------------------------------------------------------------
--- Logger:
---------------------------------------------------------------------------------
-local log								= require("hs.logger").new("selectalltimelineclips")
+local log               = require("hs.logger").new("selectalltimelineclips")
 
---------------------------------------------------------------------------------
--- Hammerspoon Extensions:
---------------------------------------------------------------------------------
-local timer                             = require("hs.timer")
+local Do                = require("cp.rx.go.Do")
+local fcp               = require("cp.apple.finalcutpro")
 
---------------------------------------------------------------------------------
--- CommandPost Extensions:
---------------------------------------------------------------------------------
-local fcp								= require("cp.apple.finalcutpro")
-
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
-local mod = {}
-
---- plugins.finalcutpro.timeline.movetoplayhead.moveToPlayhead() -> nil
---- Function
---- Move to Playhead
----
---- Parameters:
----  * None
----
---- Returns:
----  * `true` if successful otherwise `false`
-function mod.moveToPlayhead()
-
-	local clipboardManager = mod.clipboardManager
-
-	clipboardManager.stopWatching()
-
-	if not fcp:performShortcut("Cut") then
-		log.ef("Failed to trigger the 'Cut' Shortcut.\n\nError occurred in moveToPlayhead().")
-		timer.doAfter(2, function() clipboardManager.startWatching() end)
-		return false
-	end
-
-	if not fcp:performShortcut("Paste") then
-		log.ef("Failed to trigger the 'Paste' Shortcut.\n\nError occurred in moveToPlayhead().")
-		timer.doAfter(2, function() clipboardManager.startWatching() end)
-		return false
-	end
-
-	return true
-
-end
-
---------------------------------------------------------------------------------
---
--- THE PLUGIN:
---
---------------------------------------------------------------------------------
 local plugin = {
-	id = "finalcutpro.timeline.movetoplayhead",
-	group = "finalcutpro",
-	dependencies = {
-		["finalcutpro.commands"]			= "fcpxCmds",
-		["finalcutpro.clipboard.manager"]	= "clipboardManager",
-	}
+    id = "finalcutpro.timeline.movetoplayhead",
+    group = "finalcutpro",
+    dependencies = {
+        ["finalcutpro.commands"]            = "fcpxCmds",
+        ["finalcutpro.pasteboard.manager"]  = "pasteboardManager",
+    }
 }
 
---------------------------------------------------------------------------------
--- INITIALISE PLUGIN:
---------------------------------------------------------------------------------
 function plugin.init(deps)
+    --------------------------------------------------------------------------------
+    -- Only load plugin if Final Cut Pro is supported:
+    --------------------------------------------------------------------------------
+    if not fcp:isSupported() then return end
 
     --------------------------------------------------------------------------------
     -- Link to dependancies:
     --------------------------------------------------------------------------------
-	mod.clipboardManager = deps.clipboardManager
+    local pasteboardManager = deps.pasteboardManager
 
     --------------------------------------------------------------------------------
     -- Setup Command:
     --------------------------------------------------------------------------------
-    if deps.fcpxCmds then
-        deps.fcpxCmds:add("cpMoveToPlayhead")
-            :whenActivated(function() mod.moveToPlayhead() end)
-    end
+    deps.fcpxCmds
+        :add("cpMoveToPlayhead")
+        :whenActivated(function()
+            Do(pasteboardManager.stopWatching)
+                :Then(fcp:doShortcut("Cut"))
+                :Then(fcp:doShortcut("Paste"))
+                :Catch(function(message)
+                    log.ef("doMoveToPlayhead: %s", message)
+                end)
+                :Finally(function()
+                    Do(pasteboardManager.startWatching):After(2000)
+                end)
+                :Label("plugins.finalcutpro.timeline.movetoplayhead")
+                :Now()
+        end)
 
-	return mod
+    return plugin
 end
 
 return plugin

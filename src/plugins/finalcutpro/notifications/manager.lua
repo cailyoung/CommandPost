@@ -1,39 +1,19 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---                 N O T I F I C A T I O N S     M A N A G E R                --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === plugins.finalcutpro.notifications.manager ===
 ---
 --- Notifications Manager Plugin.
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
+local require = require
 
---------------------------------------------------------------------------------
--- Hammerspoon Extensions:
---------------------------------------------------------------------------------
-local distributednotifications                  = require("hs.distributednotifications")
-local fs                                        = require("hs.fs")
+local fs            = require "hs.fs"
 
---------------------------------------------------------------------------------
--- CommandPost Extensions:
---------------------------------------------------------------------------------
-local plist                                     = require("cp.plist")
-local watcher                                   = require("cp.watcher")
+local fcp           = require "cp.apple.finalcutpro"
+local i18n          = require "cp.i18n"
+local plist         = require "cp.plist"
+local watcher       = require "cp.watcher"
 
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
 local mod = {}
 
---- plugins.finalcutpro.notifications.manager
+--- plugins.finalcutpro.notifications.manager -> table
 --- Constant
 --- Event Types
 mod.EVENT_TYPES = {"success", "failure"}
@@ -126,6 +106,7 @@ local function ensureWatching()
         -- SHARE SUCCESSFUL NOTIFICATION WATCHER:
         --------------------------------------------------------------------------------
         -- NOTE: ProTranscoderDidCompleteNotification doesn't seem to trigger when exporting small clips.
+        local distributednotifications = require("hs.distributednotifications")
         mod.successWatcher = distributednotifications.new(notificationWatcherAction, "uploadSuccess")
         mod.successWatcher:start()
 
@@ -189,20 +170,17 @@ function mod.unwatch(id)
     checkWatching()
 end
 
---------------------------------------------------------------------------------
---
--- THE PLUGIN:
---
---------------------------------------------------------------------------------
 local plugin = {
     id = "finalcutpro.notifications.manager",
     group = "finalcutpro",
 }
 
---------------------------------------------------------------------------------
--- INITIALISE PLUGIN:
---------------------------------------------------------------------------------
 function plugin.init()
+    --------------------------------------------------------------------------------
+    -- Only load plugin if FCPX is supported:
+    --------------------------------------------------------------------------------
+    if not fcp:isSupported() then return end
+
     return mod
 end
 

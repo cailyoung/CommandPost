@@ -1,53 +1,23 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---                   C O M M A N D P O S T    S E T U P                       --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === plugins.core.setup ===
 ---
 --- Manager for the CommandPost Setup Screen.
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
+local require = require
 
---------------------------------------------------------------------------------
--- Logger:
---------------------------------------------------------------------------------
-local log                                       = require("hs.logger").new("setup")
+local hs        = _G.hs
 
---------------------------------------------------------------------------------
--- Hammerspoon Extensions:
---------------------------------------------------------------------------------
-local screen                                    = require("hs.screen")
-local timer                                     = require("hs.timer")
-local webview                                   = require("hs.webview")
+local log       = require "hs.logger".new "setup"
 
---------------------------------------------------------------------------------
--- CommandPost Extensions:
---------------------------------------------------------------------------------
-local config                                    = require("cp.config")
-local prop                                      = require("cp.prop")
-local tools                                     = require("cp.tools")
+local screen    = require "hs.screen"
+local webview   = require "hs.webview"
 
---------------------------------------------------------------------------------
--- 3rd Party Extensions:
---------------------------------------------------------------------------------
-local _                                         = require("moses")
+local config    = require "cp.config"
+local prop      = require "cp.prop"
+local tools     = require "cp.tools"
+local i18n      = require "cp.i18n"
 
---------------------------------------------------------------------------------
--- Module Extensions:
---------------------------------------------------------------------------------
-local panel                                     = require("panel")
+local panel     = require "panel"
 
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
 local mod = {}
 
 -- plugins.core.setup.panel -> panel
@@ -176,8 +146,7 @@ end
 
 --- plugins.core.setup.panelCount() -> number
 --- Function
---- The number of panels currently being processed in this session.
---- This includes panels already processed, the current panel, and remaining panels.
+--- The number of panels currently being processed in this session. This includes panels already processed, the current panel, and remaining panels.
 ---
 --- Parameters:
 ---  * None
@@ -203,8 +172,7 @@ end
 
 --- plugins.core.setup.panelQueue() -> table of panels
 --- Function
---- The table of panels remaining to be processed. Panels are removed from the queue
---- one at a time and idisplayed in the window via the `nextPanel()` function.
+--- The table of panels remaining to be processed. Panels are removed from the queue one at a time and displayed in the window via the `nextPanel()` function.
 ---
 --- Parameters:
 ---  * None
@@ -228,22 +196,6 @@ function mod.currentPanel()
     return mod._currentPanel
 end
 
---- plugins.core.setup.init(env) -> module
---- Function
---- Initialises the module.
----
---- Parameters:
----  * env - The plugin environment table
----
---- Returns:
----  * The Module
-function mod.init(env)
-    mod.setPanelRenderer(env:compileTemplate("html/template.html"))
-    mod.visible:update()
-
-    return mod
-end
-
 -- windowCallback(action, webview, frame) -> none
 -- Function
 -- Setup Panels Window Callback
@@ -255,10 +207,16 @@ end
 --
 -- Returns:
 --  * Table
-local function windowCallback(action, webview, frame)
+local function windowCallback(action, _, frame)
     if action == "closing" then
         if not hs.shuttingDown then
             mod.webview = nil
+            --------------------------------------------------------------------------------
+            -- Close button on window clicked:
+            --------------------------------------------------------------------------------
+            if not mod._userClosing then
+                config.application():kill()
+            end
         end
     elseif action == "frameChange" then
         if frame then
@@ -297,6 +255,10 @@ function mod.new()
         -- Use last Position or Centre on Screen:
         --------------------------------------------------------------------------------
         local defaultRect = mod.position()
+        if defaultRect then
+            defaultRect.w = mod.DEFAULT_WIDTH
+            defaultRect.h = mod.DEFAULT_HEIGHT
+        end
         if tools.isOffScreen(defaultRect) then
             defaultRect = centredPosition()
         end
@@ -324,7 +286,7 @@ function mod.new()
         }
 
         mod.webview = webview.new(defaultRect, options, mod.controller)
-            :windowStyle({"titled"})
+            :windowStyle({"titled", "closable", "nonactivating", "miniaturizable"})
             :shadow(true)
             :allowNewWindows(false)
             :allowTextEntry(true)
@@ -338,7 +300,6 @@ function mod.new()
         --------------------------------------------------------------------------------
         mod.webview:show()
         mod.visible:update()
-        mod.focus()
     end
 end
 
@@ -386,6 +347,7 @@ end
 ---  * None
 function mod.delete()
     if mod.webview then
+        mod._userClosing = true
         mod.webview:delete()
         mod.webview = nil
         mod._panelQueue = {}
@@ -420,21 +382,17 @@ end
 --- Returns:
 ---  * None
 function mod.focus()
-    mod.visible:update()
     if mod.webview then
-        timer.doAfter(0.1, function()
-            mod.webview:hswindow():focus()
-        end)
-        mod.webview:bringToFront()
-        return true
+        local w = mod.webview:hswindow()
+        if w then
+            w:focus()
+        end
     end
-    return false
 end
 
 --- plugins.core.setup.nextPanel() -> boolean
 --- Function
---- Moves to the next panel. If the window is visible, the panel will be updated.
---- If no panels are left in the queue, the window will be closed.
+--- Moves to the next panel. If the window is visible, the panel will be updated. If no panels are left in the queue, the window will be closed.
 ---
 --- Parameters:
 ---  * None
@@ -447,7 +405,6 @@ function mod.nextPanel()
         table.remove(mod._panelQueue, 1)
         mod._processedPanels = mod._processedPanels+1
         mod.update()
-        mod.focus()
         return true
     else
         mod.delete()
@@ -457,17 +414,16 @@ end
 
 --- plugins.core.setup.addPanel(newPanel) -> panel
 --- Function
---- Adds the new panel to the manager. Panels are created via the
---- `plugins.core.setup.panel.new(...)` function.
----
---- If the Setup Manager is `enabled`, the window will be displayed
---- immediately when a panel is added.
+--- Adds the new panel to the manager. Panels are created via the `plugins.core.setup.panel.new(...)` function.
 ---
 --- Parameters:
 ---  * `newPanel`   - The panel to add.
 ---
 --- Returns:
 ---  * The manager.
+---
+--- Notes:
+---  * If the Setup Manager is `enabled`, the window will be displayed immediately when a panel is added.
 function mod.addPanel(newPanel)
     mod._panelQueue[#mod._panelQueue + 1] = newPanel
     --------------------------------------------------------------------------------
@@ -477,31 +433,32 @@ function mod.addPanel(newPanel)
     return mod
 end
 
---------------------------------------------------------------------------------
---
--- THE PLUGIN:
---
---------------------------------------------------------------------------------
 local plugin = {
     id              = "core.setup",
     group           = "core",
     required        = true,
 }
 
---------------------------------------------------------------------------------
--- INITIALISE PLUGIN:
---------------------------------------------------------------------------------
-function plugin.init(deps, env)
-    return mod.init(env)
+function plugin.init()
+    return mod
 end
 
---------------------------------------------------------------------------------
--- POST INITIALISE PLUGIN:
---------------------------------------------------------------------------------
-function plugin.postInit(deps, env)
+function plugin.postInit(_, env)
+    --------------------------------------------------------------------------------
+    -- Set the Panel Renderer:
+    --------------------------------------------------------------------------------
+    mod.setPanelRenderer(env:compileTemplate("html/template.html"))
+
+    --------------------------------------------------------------------------------
+    -- Update visibility:
+    --------------------------------------------------------------------------------
+    mod.visible:update()
+
+    --------------------------------------------------------------------------------
+    -- Setup On-boarding Watcher:
+    --------------------------------------------------------------------------------
     mod.onboardingRequired:watch(function(required)
         if required then
-
             --------------------------------------------------------------------------------
             -- The Intro Panel:
             --------------------------------------------------------------------------------
@@ -510,7 +467,7 @@ function plugin.postInit(deps, env)
                     :addIcon(config.iconPath)
                     :addHeading(config.appName)
                     :addSubHeading(i18n("introTagLine"))
-                    :addParagraph(i18n("introText"), true)
+                    :addParagraph(i18n("introText"), false)
                     :addButton({
                         value   = i18n("continue"),
                         onclick = function() mod.nextPanel() end,
@@ -528,7 +485,7 @@ function plugin.postInit(deps, env)
                 panel.new("outro", mod.LAST_PRIORITY)
                     :addIcon(config.iconPath)
                     :addSubHeading(i18n("outroTitle"))
-                    :addParagraph(i18n("outroText"), true)
+                    :addParagraph(i18n("outroText"), false)
                     :addButton({
                         value   = i18n("close"),
                         onclick = function()
@@ -541,7 +498,10 @@ function plugin.postInit(deps, env)
         end
     end, true)
 
-    return mod.enabled(true)
+    --------------------------------------------------------------------------------
+    -- Set to 'enabled':
+    --------------------------------------------------------------------------------
+    mod.enabled(true)
 end
 
 return plugin

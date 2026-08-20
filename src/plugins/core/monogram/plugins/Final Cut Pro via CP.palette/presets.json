@@ -1,0 +1,186 @@
+{
+	"orbiter": [
+		{
+			"name": "Color Wheels.Master Color Wheel",
+			"info": "Adjusts the Master Color Wheel.<br><br>Turn = Master Brightness<br>Tilt X = Master Wheel Horizontal<br>Tilt Y = Master Wheel Vertical",
+			"tiltX": "Color Wheels.Master.Master Horizontal",
+			"tiltY": "Color Wheels.Master.Master Vertical",
+			"tiltMode": 2,
+			"tiltSensitivity": 2,
+			"turn": "Color Wheels.Master.Master Brightness",
+			"turnSensitivity": 9,
+			"nudgeSpeedMs": 100
+		},
+		{
+			"name": "Color Wheels.Shadows Color Wheel",
+			"info": "Adjusts the Shadows Color Wheel.<br><br>Turn = Shadows Brightness<br>Tilt X = Shadows Wheel Horizontal<br>Tilt Y = Shadows Wheel Vertical",
+			"tiltX": "Color Wheels.Shadows.Shadows Horizontal",
+			"tiltY": "Color Wheels.Shadows.Shadows Vertical",
+			"tiltMode": 2,
+			"tiltSensitivity": 2,
+			"turn": "Color Wheels.Shadows.Shadows Brightness",
+			"turnSensitivity": 9,
+			"nudgeSpeedMs": 100
+		},
+		{
+			"name": "Color Wheels.Midtones Color Wheel",
+			"info": "Adjusts the Midtones Color Wheel.<br><br>Turn = Midtones Brightness<br>Tilt X = Midtones Wheel Horizontal<br>Tilt Y = Midtones Wheel Vertical",
+			"tiltX": "Color Wheels.Midtones.Midtones Horizontal",
+			"tiltY": "Color Wheels.Midtones.Midtones Vertical",
+			"tiltMode": 2,
+			"tiltSensitivity": 2,
+			"turn": "Color Wheels.Midtones.Midtones Brightness",
+			"turnSensitivity": 9,
+			"nudgeSpeedMs": 100
+		},
+		{
+			"name": "Color Wheels.Highlights Color Wheel",
+			"info": "Adjusts the Highlights Color Wheel.<br><br>Turn = Highlights Brightness<br>Tilt X = Highlights Wheel Horizontal<br>Tilt Y = Highlights Wheel Vertical",
+			"tiltX": "Color Wheels.Highlights.Highlights Horizontal",
+			"tiltY": "Color Wheels.Highlights.Highlights Vertical",
+			"tiltMode": 2,
+			"tiltSensitivity": 2,
+			"turn": "Color Wheels.Highlights.Highlights Brightness",
+			"turnSensitivity": 9,
+			"nudgeSpeedMs": 100
+		},
+		{
+			"name": "Timeline.Jog (1 frame)",
+			"info": "Turn to move through the timeline frame-by-frame.\n\nNote: Tilt is unassigned.",
+			"turn": "Timeline.Jog",
+			"turnSensitivity": 9
+		},
+		{
+			"name": "Timeline.Jog (10 frames)",
+			"info": "Turn to move through the timeline by 10 frames at a time.\n\nNote: Tilt is unassigned.",
+			"turn": {
+				"input": "Timeline.Jog",
+				"step": 10
+			},
+			"turnSensitivity": 9
+		},
+		{
+			"name": "Timeline.Nudge (1 frame)",
+			"info": "Turn to nudge the selected clip frame-by-frame.\n\nNote: Tilt is unassigned.",
+			"turn": "Timeline.Nudge",
+			"turnSensitivity": 9
+		},
+		{
+			"name": "Timeline.Nudge (10 frames)",
+			"info": "Turn to nudge the selected clip by 10 frames at a time.\n\nNote: Tilt is unassigned.",
+			"turn": {
+				"input": "Timeline.Nudge",
+				"step": 10
+			},
+			"turnSensitivity": 9
+		},
+		{
+			"name": "timeline-scroll",
+			"info": "Turn = Timeline Scroll (Horizontal)\nTilt = Timeline Scroll (Horizontal & Vertical)",
+			"label": "Timeline.Scroll",
+			"tiltMode": 0,
+			"tiltSensitivity": 2,
+			"tiltX": {
+				"invert": false,
+				"scroll": "horizontal",
+				"step": 50,
+				"virtual": true
+			},
+			"tiltY": {
+				"invert": true,
+				"scroll": "vertical",
+				"step": 50,
+				"virtual": true
+			},
+			"turn": {
+				"invert": true,
+				"scroll": "horizontal",
+				"virtual": false
+			},
+			"turnSensitivity": 8
+		},
+		{
+			"name": "timeline-scroll-zoom",
+			"label": "Timeline.Scroll & Zoom",
+			"info": "Turn = Timeline Zoom\nTilt = Timeline Scroll",
+			"leftTurn": {
+				"key": "-",
+				"localCharacter": "-",
+				"modifiers": [
+					"command"
+				],
+				"virtual": false
+			},
+			"rightTurn": {
+				"key": "=",
+				"localCharacter": "=",
+				"modifiers": [
+					"command"
+				],
+				"virtual": false
+			},
+			"tiltMode": 0,
+			"tiltSensitivity": 2,
+			"tiltX": {
+				"invert": false,
+				"scroll": "horizontal",
+				"step": 50,
+				"virtual": true
+			},
+			"tiltY": {
+				"invert": true,
+				"scroll": "vertical",
+				"step": 50,
+				"virtual": true
+			},
+			"turnSensitivity": 8
+		},
+		{
+			"name": "timeline-scroll-skim",
+			"info": "Turn & Tilt X = Scroll horizontally and skim\nTilt Y = Scroll vertically",
+			"label": "Timeline.Scroll & Skim",
+			"nudgeSpeedMs": 20,
+			"tiltMode": 0,
+			"tiltSensitivity": 2,
+			"tiltX": {
+				"interval": 10,
+				"macro": [
+					{
+						"cursor": "x",
+						"step": 1,
+						"virtual": true
+					},
+					{
+						"invert": false,
+						"scroll": "horizontal",
+						"step": 50,
+						"virtual": true
+					}
+				]
+			},
+			"tiltY": {
+				"invert": true,
+				"scroll": "vertical",
+				"step": 20,
+				"virtual": true
+			},
+			"turn": {
+				"interval": 10,
+				"macro": [
+					{
+						"cursor": "x",
+						"step": 1,
+						"virtual": true
+					},
+					{
+						"invert": false,
+						"scroll": "horizontal",
+						"step": 50,
+						"virtual": false
+					}
+				]
+			},
+			"turnSensitivity": 9
+		}
+	]
+}

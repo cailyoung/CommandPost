@@ -1,66 +1,38 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---                     P R E F E R E N C E S   M A N A G E R                  --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === plugins.core.preferences.manager ===
 ---
 --- Manager for the CommandPost Preferences Window.
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
+local require     = require
+local hs          = _G.hs
 
---------------------------------------------------------------------------------
--- Logger:
---------------------------------------------------------------------------------
-local log                                       = require("hs.logger").new("prefsMgr")
+local log         = require "hs.logger".new "prefsMgr"
 
---------------------------------------------------------------------------------
--- Hammerspoon Extensions:
---------------------------------------------------------------------------------
-local inspect                                   = require("hs.inspect")
-local screen                                    = require("hs.screen")
-local toolbar                                   = require("hs.webview.toolbar")
-local webview                                   = require("hs.webview")
+local inspect     = require "hs.inspect"
+local mouse       = require "hs.mouse"
+local screen      = require "hs.screen"
+local timer       = require "hs.timer"
+local toolbar     = require "hs.webview.toolbar"
+local webview     = require "hs.webview"
 
---------------------------------------------------------------------------------
--- CommandPost Extensions:
---------------------------------------------------------------------------------
-local config                                    = require("cp.config")
-local dialog                                    = require("cp.dialog")
-local just                                      = require("cp.just")
-local tools                                     = require("cp.tools")
+local config      = require "cp.config"
+local dialog      = require "cp.dialog"
+local just        = require "cp.just"
+local tools       = require "cp.tools"
+local i18n        = require "cp.i18n"
 
---------------------------------------------------------------------------------
--- 3rd Party Extensions:
---------------------------------------------------------------------------------
-local _                                         = require("moses")
+local moses       = require "moses"
+local panel       = require "panel"
+local semver      = require "semver"
 
---------------------------------------------------------------------------------
--- Module Extensions:
---------------------------------------------------------------------------------
-local panel                                     = require("panel")
+local doAfter     = timer.doAfter
+local sortedIndex = moses.sortedIndex
 
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
 local mod = {}
 
 --- plugins.core.preferences.manager.WEBVIEW_LABEL -> string
 --- Constant
 --- The WebView Label
 mod.WEBVIEW_LABEL = "preferences"
-
---- plugins.core.preferences.manager.DEFAULT_WINDOW_STYLE -> table
---- Constant
---- Default Webview Window Style of Preferences Window
-mod.DEFAULT_WINDOW_STYLE  = {"titled", "closable", "nonactivating"}
 
 --- plugins.core.preferences.manager.DEFAULT_HEIGHT -> number
 --- Constant
@@ -71,11 +43,6 @@ mod.DEFAULT_HEIGHT = 338
 --- Constant
 --- Default Width of Preferences Window
 mod.DEFAULT_WIDTH = 1000
-
---- plugins.core.preferences.manager.DEFAULT_TITLE -> string
---- Constant
---- Default Title of Preferences Window
-mod.DEFAULT_TITLE = i18n("preferences")
 
 --- plugins.core.preferences.manager._panels -> table
 --- Variable
@@ -90,12 +57,12 @@ mod._handlers = {}
 --- plugins.core.preferences.manager.position
 --- Constant
 --- Returns the last frame saved in settings.
-mod.position = config.prop("preferencesPosition", nil)
+mod.position = config.prop("preferences.position", nil)
 
 --- plugins.core.preferences.manager.lastTab
 --- Constant
 --- Returns the last tab saved in settings.
-mod.lastTab = config.prop("preferencesLastTab", nil)
+mod.lastTab = config.prop("preferences.lastTab", nil)
 
 --- plugins.core.preferences.manager.getWebview() -> hs.webview
 --- Function
@@ -181,16 +148,16 @@ local function isPanelIDValid(whichID)
     return false
 end
 
--- currentPanelID() -> string
--- Function
--- Returns the panel ID with the highest priority.
---
--- Parameters:
--- * None
---
--- Returns:
--- * The panel ID as a string
-local function currentPanelID()
+--- plugins.core.preferences.manager.currentPanelID() -> string
+--- Function
+--- Returns the panel ID with the highest priority.
+---
+--- Parameters:
+---  * None
+---
+--- Returns:
+---  * The panel ID as a string
+function mod.currentPanelID()
     local id = mod.lastTab()
     if id and isPanelIDValid(id) then
         return id
@@ -213,7 +180,8 @@ local function generateHTML()
 
     env.debugMode = config.developerMode()
     env.panels = mod._panels
-    env.currentPanelID = currentPanelID()
+    env.currentPanelID = mod.currentPanelID()
+    env.webviewLabel = mod.WEBVIEW_LABEL
 
     local result, err = mod._panelRenderer(env)
     if err then
@@ -235,9 +203,12 @@ end
 --
 -- Returns:
 -- * None
-local function windowCallback(action, webview, frame)
+local function windowCallback(action, _, frame)
     if action == "closing" then
         if not hs.shuttingDown then
+            --------------------------------------------------------------------------------
+            -- Destroy the Webview:
+            --------------------------------------------------------------------------------
             mod._webview = nil
 
             --------------------------------------------------------------------------------
@@ -248,11 +219,13 @@ local function windowCallback(action, webview, frame)
                     v.closeFn()
                 end
             end
-
         end
     elseif action == "frameChange" then
         if frame then
-            mod.position(frame)
+            mod.position({
+                x = frame.x,
+                y = frame.y,
+            })
         end
     end
 end
@@ -327,9 +300,13 @@ function mod.new()
     --------------------------------------------------------------------------------
     -- Use last Position or Centre on Screen:
     --------------------------------------------------------------------------------
-    local defaultRect = mod.position()
-    if tools.isOffScreen(defaultRect) then
-        defaultRect = centredPosition()
+    local defaultRect = centredPosition()
+    local p = mod.position()
+    if p then
+        local savedPosition = {x = p.x, y = p.y, w = mod.DEFAULT_WIDTH, h = mod.DEFAULT_HEIGHT}
+        if not tools.isOffScreen(defaultRect) then
+            defaultRect = savedPosition
+        end
     end
 
     --------------------------------------------------------------------------------
@@ -356,10 +333,13 @@ function mod.new()
         mod._toolbar = toolbar.new(mod.WEBVIEW_LABEL)
             :canCustomize(true)
             :autosaves(true)
+            :sizeMode("small")
+            :toolbarStyle("preference")
             :setCallback(function(_, _, id)
-                mod.selectPanel(id)
+                doAfter(0, function()
+                    mod.refresh(id)
+                end)
             end)
-
         local theToolbar = mod._toolbar
         for _,thePanel in ipairs(mod._panels) do
             local item = thePanel:getToolbarItem()
@@ -377,11 +357,11 @@ function mod.new()
         local prefs = {}
         prefs.developerExtrasEnabled = config.developerMode()
         mod._webview = webview.new(defaultRect, prefs, mod._controller)
-            :windowStyle(mod.DEFAULT_WINDOW_STYLE)
+            :windowStyle({"titled", "closable"}) -- , "nonactivating"})
             :shadow(true)
             :allowNewWindows(false)
             :allowTextEntry(true)
-            :windowTitle(mod.DEFAULT_TITLE)
+            :windowTitle(i18n("preferences"))
             :attachedToolbar(mod._toolbar)
             :deleteOnClose(true)
             :windowCallback(windowCallback)
@@ -391,16 +371,19 @@ function mod.new()
     return mod
 end
 
---- plugins.core.preferences.manager.show() -> boolean
+--- plugins.core.preferences.manager.show([panelID]) -> boolean
 --- Function
 --- Shows the Preferences Window
 ---
 --- Parameters:
----  * None
+---  * [panelID] - An optional panel ID
 ---
 --- Returns:
 ---  * True if successful or nil if an error occurred
-function mod.show()
+function mod.show(panelID)
+    if panelID then
+        mod.lastTab(panelID)
+    end
 
     if mod._webview == nil then
         mod.new()
@@ -410,9 +393,10 @@ function mod.show()
         dialog.displayMessage("There are no Preferences Panels to display.")
         return nil
     else
-        mod.selectPanel(currentPanelID())
+        mod.selectPanel(mod.currentPanelID())
         mod._webview:html(generateHTML())
         mod._webview:show()
+        hs.focus() -- This will force a spaces change if needed.
         mod.focus()
     end
 
@@ -463,10 +447,16 @@ end
 ---
 --- Returns:
 ---  * None
-function mod.refresh()
+function mod.refresh(id)
     if mod._webview then
-        mod.selectPanel(currentPanelID())
-        mod._webview:html(generateHTML())
+        if mod.currentPanelID() ~= id then
+            if id then
+                mod.selectPanel(id)
+            else
+                mod.selectPanel(mod.currentPanelID())
+            end
+            mod._webview:html(generateHTML())
+        end
     end
 end
 
@@ -480,8 +470,14 @@ end
 --- Returns:
 ---  * None
 function mod.injectScript(script)
-    if mod._webview then
-        mod._webview:evaluateJavaScript(script)
+    if mod._webview and mod._webview:frame() then
+        mod._webview:evaluateJavaScript(script,
+            function(_, theerror)
+                if theerror and theerror.code ~= 0 then
+                    log.df("Javascript Error: %s\nCaused by script: %s", inspect(theerror), script)
+                end
+            end
+        )
     end
 end
 
@@ -500,8 +496,6 @@ function mod.selectPanel(id)
         return
     end
 
-    local js = ""
-
     for _, thePanel in ipairs(mod._panels) do
         --------------------------------------------------------------------------------
         -- Resize Panel:
@@ -513,16 +507,23 @@ function mod.selectPanel(id)
             else
                 height = thePanel.height
             end
-            mod._webview:size({w = mod.DEFAULT_WIDTH, h = height })
+
+            --------------------------------------------------------------------------------
+            -- Make sure the panel isn't bigger than the screen:
+            --------------------------------------------------------------------------------
+            local currentScreen = mouse.getCurrentScreen()
+            local currentFrame = currentScreen and currentScreen:frame()
+            local currentHeight = currentFrame and currentFrame.h
+
+            if height > currentHeight then
+                height = currentHeight - 10
+            end
+
+            mod._webview:size({w = mod.DEFAULT_WIDTH, h = height})
         end
 
-        local style = thePanel.id == id and "block" or "none"
-        js = js .. [[
-            document.getElementById(']] .. thePanel.id .. [[').style.display = ']] .. style .. [[';
-        ]]
     end
 
-    mod._webview:evaluateJavaScript(js)
     mod._toolbar:selectedItem(id)
 
     --------------------------------------------------------------------------------
@@ -565,20 +566,14 @@ end
 ---  ** `tooltip`       - The human-readable details for the toolbar icon when the mouse is hovering over it.
 ---  ** `closeFn`       - A callback function that's triggered when the Preferences window is closed.
 function mod.addPanel(params)
-
     local newPanel = panel.new(params, mod)
 
-    local index = _.sortedIndex(mod._panels, newPanel, comparePriorities)
+    local index = sortedIndex(mod._panels, newPanel, comparePriorities)
     table.insert(mod._panels, index, newPanel)
 
     return newPanel
 end
 
---------------------------------------------------------------------------------
---
--- THE PLUGIN:
---
---------------------------------------------------------------------------------
 local plugin = {
     id              = "core.preferences.manager",
     group           = "core",
@@ -588,20 +583,38 @@ local plugin = {
     }
 }
 
---------------------------------------------------------------------------------
--- INITIALISE PLUGIN:
---------------------------------------------------------------------------------
 function plugin.init(deps, env)
-
     --------------------------------------------------------------------------------
     -- Commands:
     --------------------------------------------------------------------------------
-    local global = deps.global
-    global:add("cpPreferences")
+    deps.global
+        :add("cpPreferences")
         :whenActivated(mod.show)
         :groupedBy("commandPost")
 
+    --------------------------------------------------------------------------------
+    -- Initalise Module:
+    --------------------------------------------------------------------------------
     return mod.init(env)
+end
+
+function plugin.postInit(deps)
+    --------------------------------------------------------------------------------
+    -- Add Commands to open individual panels:
+    --------------------------------------------------------------------------------
+    for _, v in pairs(mod._panels) do
+        local id = v.id
+        local label = v.label
+        local img = v.image
+        deps.global
+            :add("preferences" .. id)
+            :whenActivated(function()
+                mod.show(id)
+            end)
+            :titled(label)
+            :subtitled(i18n("preferences"))
+            :image(img)
+    end
 end
 
 return plugin

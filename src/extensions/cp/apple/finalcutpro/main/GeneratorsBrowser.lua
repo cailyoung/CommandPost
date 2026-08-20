@@ -1,61 +1,62 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---                   F I N A L    C U T    P R O    A P I                     --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === cp.apple.finalcutpro.main.GeneratorsBrowser ===
 ---
 --- Generators Browser Module.
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
-local log								= require("hs.logger").new("timline")
-local inspect							= require("hs.inspect")
+local require = require
 
-local just								= require("cp.just")
-local prop								= require("cp.prop")
-local axutils							= require("cp.ui.axutils")
-local tools								= require("cp.tools")
-local geometry							= require("hs.geometry")
+-- local log								= require "hs.logger" .new "timline"
 
-local PrimaryWindow						= require("cp.apple.finalcutpro.main.PrimaryWindow")
-local SecondaryWindow					= require("cp.apple.finalcutpro.main.SecondaryWindow")
-local Button							= require("cp.ui.Button")
-local Table								= require("cp.ui.Table")
-local ScrollArea						= require("cp.ui.ScrollArea")
-local CheckBox							= require("cp.ui.CheckBox")
-local PopUpButton						= require("cp.ui.PopUpButton")
-local TextField							= require("cp.ui.TextField")
+-- local inspect							= require "hs.inspect"
 
-local id								= require("cp.apple.finalcutpro.ids") "GeneratorsBrowser"
+local just								= require "cp.just"
+local prop								= require "cp.prop"
+local axutils							= require "cp.ui.axutils"
+local tools								= require "cp.tools"
+local geometry							= require "hs.geometry"
+local fnutils							= require "hs.fnutils"
 
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
-local GeneratorsBrowser = {}
+local Group                             = require "cp.ui.Group"
+local Table								= require "cp.ui.OldTable"
+local ScrollArea						= require "cp.ui.ScrollArea"
+local PopUpButton						= require "cp.ui.PopUpButton"
+local TextField							= require "cp.ui.TextField"
 
-GeneratorsBrowser.TITLE = "Titles and Generators"
+local go                                = require "cp.rx.go"
 
--- TODO: Add documentation
-function GeneratorsBrowser:new(parent)
-	local o = {_parent = parent}
-	return prop.extend(o, GeneratorsBrowser)
-end
+local Do                                = go.Do
+local WaitUntil                         = go.WaitUntil
 
--- TODO: Add documentation
-function GeneratorsBrowser:parent()
-	return self._parent
-end
+local cache                             = axutils.cache
+local childWithRole                     = axutils.childWithRole
+local childMatching                     = axutils.childMatching
 
--- TODO: Add documentation
-function GeneratorsBrowser:app()
-	return self:parent():app()
+local ninjaDoubleClick                  = tools.ninjaDoubleClick
+
+local GeneratorsBrowser = Group:subclass("cp.apple.finalcutpro.main.GeneratorsBrowser")
+
+--- cp.apple.finalcutpro.main.GeneratorsBrowser.TITLE -> string
+--- Constant
+--- Titles & Generators Title.
+GeneratorsBrowser.static.TITLE = "Titles and Generators"
+
+--- cp.apple.finalcutpro.main.GeneratorsBrowser(parent) -> GeneratorsBrowser
+--- Constructor
+--- Creates a new `GeneratorsBrowser` instance.
+---
+--- Parameters:
+---  * app - The `cp.apple.finalcutpro` object.
+---
+--- Returns:
+---  * A new `GeneratorsBrowser` object.
+function GeneratorsBrowser:initialize(parent)
+    Group.initialize(self, parent, parent.UI:mutate(function(original)
+        if self:isShowing() then
+            return cache(self, "_ui", function()
+                return original()
+            end)
+        end
+        return nil
+    end))
 end
 
 -----------------------------------------------------------------------
@@ -64,36 +65,60 @@ end
 --
 -----------------------------------------------------------------------
 
--- TODO: Add documentation
-function GeneratorsBrowser:UI()
-	if self:isShowing() then
-		return axutils.cache(self, "_ui", function()
-			return self:parent():UI()
-		end)
-	end
-	return nil
+--- cp.apple.finalcutpro.main.GeneratorsBrowser.isShowing <cp.prop: boolean>
+--- Variable
+--- Is the Generators Browser showing?
+function GeneratorsBrowser.lazy.prop:isShowing()
+    return prop.new(function()
+        local parent = self:parent()
+        return parent:isShowing() and parent.showGenerators:checked()
+    end)
 end
 
--- TODO: Add documentation
-GeneratorsBrowser.isShowing = prop.new(function(self)
-	local parent = self:parent()
-	return parent:isShowing() and parent:showGenerators():isChecked()
-end):bind(GeneratorsBrowser)
-
--- TODO: Add documentation
+--- cp.apple.finalcutpro.main.GeneratorsBrowser:show() -> GeneratorsBrowser
+--- Method
+--- Shows the Generators Browser.
+---
+--- Parameters:
+---  * None
+---
+--- Returns:
+---  * The `GeneratorsBrowser` instance.
 function GeneratorsBrowser:show()
-	local menuBar = self:app():menuBar()
-	-- Go there direct
-	menuBar:selectMenu({"Window", "Go To", GeneratorsBrowser.TITLE})
-	just.doUntil(function() return self:isShowing() end)
-	return self
+    local menuBar = self:app().menu
+    -----------------------------------------------------------------------
+    -- Go there direct:
+    -----------------------------------------------------------------------
+    menuBar:selectMenu({"Window", "Go To", GeneratorsBrowser.TITLE})
+    just.doUntil(function() return self:isShowing() end)
+    return self
 end
 
--- TODO: Add documentation
+function GeneratorsBrowser.lazy.method:doShow()
+    local menuBar = self:app().menu
+
+    return Do(menuBar:doSelectMenu({"Window", "Go To", GeneratorsBrowser.TITLE}))
+    :Then(WaitUntil(self.isShowing))
+    :ThenYield()
+end
+
+--- cp.apple.finalcutpro.main.GeneratorsBrowser:hide() -> GeneratorsBrowser
+--- Method
+--- Hides the Generators Browser.
+---
+--- Parameters:
+---  * None
+---
+--- Returns:
+---  * The `GeneratorsBrowser` instance.
 function GeneratorsBrowser:hide()
-	self:parent():hide()
-	just.doWhile(function() return self:isShowing() end)
-	return self
+    self:parent():hide()
+    just.doWhile(function() return self:isShowing() end)
+    return self
+end
+
+function GeneratorsBrowser.lazy.method:doHide()
+    return Do(self:parent():doHide())
 end
 
 -----------------------------------------------------------------------------
@@ -102,114 +127,115 @@ end
 --
 -----------------------------------------------------------------------------
 
--- TODO: Add documentation
-function GeneratorsBrowser:mainGroupUI()
-	return axutils.cache(self, "_mainGroup",
-	function()
-		local ui = self:UI()
-		return ui and axutils.childWithRole(ui, "AXSplitGroup")
-	end)
+--- cp.apple.finalcutpro.main.GeneratorsBrowser.mainGroupUI <cp.prop: axuielementObject>
+--- Field
+--- Main Group UI.
+function GeneratorsBrowser.lazy.prop:mainGroupUI()
+    return self.UI:mutate(function(original)
+        return cache(self, "_mainGroup",
+        function()
+            local ui = original()
+            return ui and childWithRole(ui, "AXSplitGroup")
+        end)
+    end)
 end
 
--- TODO: Add documentation
-function GeneratorsBrowser:sidebar()
-	if not self._sidebar then
-		self._sidebar = Table.new(self, function()
-			return axutils.childWithID(self:mainGroupUI(), id "Sidebar")
-		end):uncached()
-	end
-	return self._sidebar
+--- cp.apple.finalcutpro.main.GeneratorsBrowser.sidebar <cp.ui.OldTable>
+--- Field
+--- The sidebar object.
+function GeneratorsBrowser.lazy.value:sidebar()
+    return Table(self, function()
+        return childWithRole(self:mainGroupUI(), "AXScrollArea")
+    end)
 end
 
--- TODO: Add documentation
-function GeneratorsBrowser:contents()
-	if not self._contents then
-		self._contents = ScrollArea:new(self, function()
-			local group = axutils.childMatching(self:mainGroupUI(), function(child)
-				return child:role() == "AXGroup" and #child == 1
-			end)
-			return group and group[1]
-		end)
-	end
-	return self._contents
+--- cp.apple.finalcutpro.main.GeneratorsBrowser.contents <cp.ui.ScrollArea>
+--- Field
+--- The Generators Browser Contents.
+function GeneratorsBrowser.lazy.value:contents()
+    return ScrollArea(self, function()
+        local group = childMatching(self:mainGroupUI(), function(child)
+            return child:attributeValue("AXRole") == "AXGroup" and #child == 1
+        end)
+        return group and group[1]
+    end)
 end
 
--- TODO: Add documentation
-function GeneratorsBrowser:group()
-	if not self._group then
-		self._group = PopUpButton:new(self, function()
-			return axutils.childWithRole(self:UI(), "AXPopUpButton")
-		end)
-	end
-	return self._group
+--- cp.apple.finalcutpro.main.GeneratorsBrowser.group <cp.ui.PopUpButton>
+--- Field
+--- The group.
+function GeneratorsBrowser.lazy.value:group()
+    return PopUpButton(self, function()
+        return childMatching(self:UI(), PopUpButton.matches)
+    end)
 end
 
--- TODO: Add documentation
-function GeneratorsBrowser:search()
-	if not self._search then
-		self._search = TextField:new(self, function()
-			return axutils.childWithRole(self:mainGroupUI(), "AXTextField")
-		end)
-	end
-	return self._search
+--- cp.apple.finalcutpro.main.GeneratorsBrowser.search <cp.ui.TextField>
+--- Field
+--- Gets the Search TextField object.
+function GeneratorsBrowser.lazy.value:search()
+    return TextField(self, function()
+        return childMatching(self:mainGroupUI(), TextField.matches)
+    end)
 end
 
---- cp.apple.finalcutpro.main.GeneratorsBrowser:showSidebar() -> self
+--- cp.apple.finalcutpro.main.GeneratorsBrowser:showSidebar() -> GeneratorsBrowser
 --- Method
 --- Ensures the sidebar is showing in the Generators & Titles panel.
 ---
 --- Parameters:
---- * None
+---  * None
 ---
 --- Returns:
---- * The Generators Browser.
+---  * The `GeneratorsBrowser` object.
 function GeneratorsBrowser:showSidebar()
-	if not self:sidebar():isShowing() then
-		self:app():menuBar():checkMenu({"Window", "Show in Workspace", 1})
-	end
+    if not self.sidebar:isShowing() then
+        self:app().menu:selectMenu({"Window", "Show in Workspace", 1})
+    end
+    return self
 end
 
---- cp.apple.finalcutpro.main.GeneratorsBrowser:topCategoriesUI() -> table of axuielements
+--- cp.apple.finalcutpro.main.GeneratorsBrowser:topCategoriesUI() -> table
 --- Method
 --- Returns an array of the top-level categories in the sidebar.
 ---
 --- Parameters:
---- * None
+---  * None
 ---
 --- Returns:
---- * The array of category rows.
+---  * The array of category rows.
 function GeneratorsBrowser:topCategoriesUI()
-	return self:sidebar():rowsUI(function(row)
-		return row:attributeValue("AXDisclosureLevel") == 0
-	end)
+    return self.sidebar:rowsUI(function(row)
+        return row:attributeValue("AXDisclosureLevel") == 0
+    end)
 end
 
---- cp.apple.finalcutpro.main.GeneratorsBrowser:showInstalledTitles() -> self
+--- cp.apple.finalcutpro.main.GeneratorsBrowser:showInstalledTitles() -> GeneratorsBrowser
 --- Method
 --- Ensures that the browser is showing 'Installed Titles'.
 ---
 --- Parameters:
---- * None
+---  * None
 ---
 --- Returns:
---- * The Generators Browser.
+---  * The `GeneratorsBrowser` object.
 function GeneratorsBrowser:showInstalledTitles()
-	self:group():selectItem(1)
-	return self
+    self.group:selectItem(1)
+    return self
 end
 
---- cp.apple.finalcutpro.main.GeneratorsBrowser:showInstalledGenerators() -> self
+--- cp.apple.finalcutpro.main.GeneratorsBrowser:showInstalledGenerators() -> GeneratorsBrowser
 --- Method
 --- Ensures that the browser is showing 'Installed Generators'.
 ---
 --- Parameters:
---- * None
+---  * None
 ---
 --- Returns:
---- * The Generators Browser.
+---  * The `GeneratorsBrowser` object.
 function GeneratorsBrowser:showInstalledGenerators()
-	self:showInstalledTitles()
-	return self
+    self:showInstalledTitles()
+    return self
 end
 
 --- cp.apple.finalcutpro.main.GeneratorsBrowser:getTitlesRowLabel() -> string
@@ -217,30 +243,141 @@ end
 --- Returns the label of the 'Titles' row in the current language.
 ---
 --- Parameters:
---- * None
+---  * None
 ---
 --- Returns:
---- * The 'Titles' label.
+---  * The 'Titles' label.
 function GeneratorsBrowser:getTitlesRowLabel()
-	return self:app():string("project media sidebar titles row")
+    return self:app():string("project media sidebar titles row")
 end
 
---- cp.apple.finalcutpro.main.GeneratorsBrowser:showAllTitles() -> self
+--- cp.apple.finalcutpro.main.GeneratorsBrowser:showAllTitles() -> GeneratorsBrowser
 --- Method
 --- Ensures the sidebar is showing in the Generators & Titles panel, focused on all 'Titles'.
 ---
 --- Parameters:
---- * None
+---  * None
 ---
 --- Returns:
---- * The Generators Browser.
+---  * The `GeneratorsBrowser` object.
 function GeneratorsBrowser:showAllTitles()
-	self:showSidebar()
-	local topCategories = self:topCategoriesUI()
-	if topCategories and #topCategories == 2 then
-		self:sidebar():selectRow(topCategories[1])
-	end
-	return self
+    self:showSidebar()
+    local topCategories = self:topCategoriesUI()
+    if topCategories and #topCategories == 2 then
+        self.sidebar:selectRow(topCategories[1])
+    end
+    return self
+end
+
+-- cp.apple.finalcutpro.main.GeneratorsBrowser:_findAndSelectCategoryRow(parentLabel, name) -> boolean
+-- Method
+-- Finds and selects a category row by name under a parent row, in a single pass.
+-- This is more efficient than first collecting all rows then searching through them.
+--
+-- Parameters:
+--  * parentLabel - The label of the parent row (e.g., "Titles" or "Generators").
+--  * name - The category name to find and select.
+--
+-- Returns:
+--  * `true` if the row was found and selected, otherwise `false`.
+function GeneratorsBrowser:_findAndSelectCategoryRow(parentLabel, name)
+    local ui = self.sidebar:contentUI()
+    if not ui then
+        return false
+    end
+
+    local isFinalCutPro12OrLater = self:app():isFinalCutPro12OrLater()
+
+    --------------------------------------------------------------------------------
+    -- First, find and disclose the parent row:
+    --------------------------------------------------------------------------------
+    local parentRow = nil
+    for _,child in ipairs(ui) do
+        if child:attributeValue("AXRole") == "AXRow" then
+            local cell = child[1]
+            local value
+            if isFinalCutPro12OrLater then
+                --------------------------------------------------------------------------------
+                -- In FCP 12, the structure is: AXRow > AXCell > AXStaticText
+                --------------------------------------------------------------------------------
+                local staticText = cell and cell[2]
+                value = staticText and staticText:attributeValue("AXValue")
+            else
+                --------------------------------------------------------------------------------
+                -- In earlier versions, try multiple approaches:
+                --------------------------------------------------------------------------------
+                if cell then
+                    if #cell > 0 then
+                        value = cell[1] and cell[1]:attributeValue("AXValue")
+                    else
+                        value = cell:attributeValue("AXValue")
+                    end
+                    --------------------------------------------------------------------------------
+                    -- Fallback for FCP 11 structure:
+                    --------------------------------------------------------------------------------
+                    if value == nil then
+                        local subCell = childWithRole(cell, "AXCell")
+                        local staticText = subCell and childWithRole(subCell, "AXStaticText")
+                        value = staticText and staticText:attributeValue("AXValue")
+                    end
+                end
+            end
+
+            if value == parentLabel then
+                parentRow = child
+                break
+            end
+        end
+    end
+
+    if not parentRow then
+        return false
+    end
+
+    --------------------------------------------------------------------------------
+    -- Ensure the parent row is disclosed:
+    --------------------------------------------------------------------------------
+    local disclosing = parentRow:attributeValue("AXDisclosing")
+    if disclosing == false then
+        parentRow:setAttributeValue("AXDisclosing", true)
+    end
+
+    --------------------------------------------------------------------------------
+    -- Now search through the disclosed children:
+    --------------------------------------------------------------------------------
+    local disclosedRows = parentRow:attributeValue("AXDisclosedRows")
+    if not disclosedRows then
+        return false
+    end
+
+    for _,row in ipairs(disclosedRows) do
+        local cell = row[1]
+        local value
+        if isFinalCutPro12OrLater then
+            local staticText = cell and cell[2]
+            value = staticText and staticText:attributeValue("AXValue")
+        else
+            if cell then
+                if #cell > 0 then
+                    value = cell[1] and cell[1]:attributeValue("AXValue")
+                else
+                    value = cell:attributeValue("AXValue")
+                end
+                if value == nil then
+                    local subCell = childWithRole(cell, "AXCell")
+                    local staticText = subCell and childWithRole(subCell, "AXStaticText")
+                    value = staticText and staticText:attributeValue("AXValue")
+                end
+            end
+        end
+
+        if value == name then
+            row:setAttributeValue("AXSelected", true)
+            return true
+        end
+    end
+
+    return false
 end
 
 --- cp.apple.finalcutpro.main.GeneratorsBrowser:showTitlesCategory(name) -> self
@@ -248,79 +385,161 @@ end
 --- Ensures the sidebar is showing and that the selected 'Titles' category is selected, if available.
 ---
 --- Parameters:
---- * `name`		- The category name, in the current language.
+---  * name - The category name, in the current language.
 ---
 --- Returns:
---- * The Generators Browser.
+---  * The Generators Browser.
 function GeneratorsBrowser:showTitlesCategory(name)
-	self:showSidebar()
-	Table.selectRow(self:sidebar():rowsUI(), {self:getTitlesRowLabel(), name})
-	return self
+    self:showSidebar()
+    --------------------------------------------------------------------------------
+    -- Use optimized single-pass search for better performance in FCP 12+:
+    --------------------------------------------------------------------------------
+    if not self:_findAndSelectCategoryRow(self:getTitlesRowLabel(), name) then
+        --------------------------------------------------------------------------------
+        -- Fallback to legacy method if direct search fails:
+        --------------------------------------------------------------------------------
+        Table.selectRow(self.sidebar:rowsUI(), {self:getTitlesRowLabel(), name})
+    end
+    return self
 end
 
+--- cp.apple.finalcutpro.main.GeneratorsBrowser:getGeneratorsRowLabel() -> string
+--- Method
+--- Gets a Generators Row Label.
+---
+--- Parameters:
+---  * None
+---
+--- Returns:
+---  * The Generators Row Label as string.
 function GeneratorsBrowser:getGeneratorsRowLabel()
-	return self:app():string("project media sidebar generators row")
+    return self:app():string("project media sidebar generators row")
 end
 
--- TODO: Add documentation
+--- cp.apple.finalcutpro.main.GeneratorsBrowser:showAllGenerators() -> GeneratorsBrowser
+--- Method
+--- Show All Generators.
+---
+--- Parameters:
+---  * None
+---
+--- Returns:
+---  * The `GeneratorsBrowser` object.
 function GeneratorsBrowser:showAllGenerators()
-	self:showSidebar()
-	local topCategories = self:topCategoriesUI()
-	if topCategories and #topCategories == 2 then
-		self:sidebar():selectRow(topCategories[2])
-	end
-	return self
+    self:showSidebar()
+    local topCategories = self:topCategoriesUI()
+    if topCategories and #topCategories == 2 then
+        self.sidebar:selectRow(topCategories[2])
+    end
+    return self
 end
 
+--- cp.apple.finalcutpro.main.GeneratorsBrowser:showGeneratorsCategory(name) -> GeneratorsBrowser
+--- Method
+--- Show a specific Generators Category.
+---
+--- Parameters:
+---  * name - The name of the Generators Category to show.
+---
+--- Returns:
+---  * The `GeneratorsBrowser` object.
 function GeneratorsBrowser:showGeneratorsCategory(name)
-	self:showSidebar()
-	Table.selectRow(self:sidebar():rowsUI(), {self:getGeneratorsRowLabel(), name})
-	return self
+    self:showSidebar()
+    --------------------------------------------------------------------------------
+    -- Use optimized single-pass search for better performance in FCP 12+:
+    --------------------------------------------------------------------------------
+    if not self:_findAndSelectCategoryRow(self:getGeneratorsRowLabel(), name) then
+        --------------------------------------------------------------------------------
+        -- Fallback to legacy method if direct search fails:
+        --------------------------------------------------------------------------------
+        Table.selectRow(self.sidebar:rowsUI(), {self:getGeneratorsRowLabel(), name})
+    end
+    return self
 end
 
--- TODO: Add documentation
+--- cp.apple.finalcutpro.main.GeneratorsBrowser:currentItemsUI() -> axuielementObject
+--- Method
+--- Gets the current items UI.
+---
+--- Parameters:
+---  * None
+---
+--- Returns:
+---  * `axuielementObject` object.
 function GeneratorsBrowser:currentItemsUI()
-	return self:contents():childrenUI()
+    return self.contents:childrenUI()
 end
 
--- TODO: Add documentation
+--- cp.apple.finalcutpro.main.GeneratorsBrowser:selectedItemsUI() -> axuielementObject
+--- Method
+--- Gets the selected items UI.
+---
+--- Parameters:
+---  * None
+---
+--- Returns:
+---  * `axuielementObject` object.
 function GeneratorsBrowser:selectedItemsUI()
-	return self:contents():selectedChildrenUI()
+    return self.contents:selectedChildrenUI()
 end
 
--- TODO: Add documentation
+--- cp.apple.finalcutpro.main.GeneratorsBrowser:itemIsSelected(itemUI) -> boolean
+--- Method
+--- Checks to see if an item is selected.
+---
+--- Parameters:
+---  * itemUI - A `axuielementObject` to check.
+---
+--- Returns:
+---  * `true` if the item is selected, otherwise `false`.
 function GeneratorsBrowser:itemIsSelected(itemUI)
-	local selectedItems = self:selectedItemsUI()
-	if selectedItems and #selectedItems > 0 then
-		for _,selected in ipairs(selectedItems) do
-			if selected == itemUI then
-				return true
-			end
-		end
-	end
-	return false
+    local selectedItems = self:selectedItemsUI()
+    if selectedItems and #selectedItems > 0 then
+        for _,selected in ipairs(selectedItems) do
+            if selected == itemUI then
+                return true
+            end
+        end
+    end
+    return false
 end
 
--- TODO: Add documentation
+--- cp.apple.finalcutpro.main.GeneratorsBrowser:applyItem(itemUI) -> GeneratorsBrowser
+--- Method
+--- Applies an item by double clicking on it.
+---
+--- Parameters:
+---  * itemUI - The `axuielementObject` of the item you want to apply.
+---
+--- Returns:
+---  * The `GeneratorsBrowser` object.
 function GeneratorsBrowser:applyItem(itemUI)
-	if itemUI then
-		self:contents():showChild(itemUI)
-		local targetPoint = geometry.rect(itemUI:frame()).center
-		tools.ninjaDoubleClick(targetPoint)
-	end
-	return self
+    if itemUI then
+        self.contents:showChild(itemUI)
+        local frame = itemUI:attributeValue("AXFrame")
+        local targetPoint = geometry.rect(frame).center
+        ninjaDoubleClick(targetPoint)
+    end
+    return self
 end
 
--- TODO: Add documentation
--- Returns the list of titles for all effects/transitions currently visible
+--- cp.apple.finalcutpro.main.GeneratorsBrowser:getCurrentTitles() -> table
+--- Method
+--- Returns the list of titles for all generators currently visible.
+---
+--- Parameters:
+---  * None
+---
+--- Returns:
+---  * A table
 function GeneratorsBrowser:getCurrentTitles()
-	local contents = self:contents():childrenUI()
-	if contents ~= nil then
-		return fnutils.map(contents, function(child)
-			return child:attributeValue("AXTitle")
-		end)
-	end
-	return nil
+    local contents = self.contents:childrenUI()
+    if contents ~= nil then
+        return fnutils.map(contents, function(child)
+            return child:attributeValue("AXTitle")
+        end)
+    end
+    return nil
 end
 
 --------------------------------------------------------------------------------
@@ -329,26 +548,42 @@ end
 --
 --------------------------------------------------------------------------------
 
--- TODO: Add documentation
+--- cp.apple.finalcutpro.main.GeneratorsBrowser:saveLayout() -> table
+--- Method
+--- Saves the current Generators Browser layout to a table.
+---
+--- Parameters:
+---  * None
+---
+--- Returns:
+---  * A table containing the current Effects Browser Layout.
 function GeneratorsBrowser:saveLayout()
-	local layout = {}
-	if self:isShowing() then
-		layout.showing = true
-		layout.sidebar = self:sidebar():saveLayout()
-		layout.contents = self:contents():saveLayout()
-		layout.search = self:search():saveLayout()
-	end
-	return layout
+    local layout = {}
+    if self:isShowing() then
+        layout.showing = true
+        layout.sidebar = self.sidebar:saveLayout()
+        layout.contents = self.contents:saveLayout()
+        layout.search = self.search:saveLayout()
+    end
+    return layout
 end
 
--- TODO: Add documentation
+--- cp.apple.finalcutpro.main.GeneratorsBrowser:loadLayout(layout) -> none
+--- Method
+--- Loads a Generators Browser layout.
+---
+--- Parameters:
+---  * layout - A table containing the Generators Browser layout settings - created using `cp.apple.finalcutpro.main.GeneratorsBrowser:saveLayout()`.
+---
+--- Returns:
+---  * None
 function GeneratorsBrowser:loadLayout(layout)
-	if layout and layout.showing then
-		self:show()
-		self:search():loadLayout(layout.search)
-		self:sidebar():loadLayout(layout.sidebar)
-		self:contents():loadLayout(layout.contents)
-	end
+    if layout and layout.showing then
+        self:show()
+        self.search:loadLayout(layout.search)
+        self.sidebar:loadLayout(layout.sidebar)
+        self.contents:loadLayout(layout.contents)
+    end
 end
 
 return GeneratorsBrowser

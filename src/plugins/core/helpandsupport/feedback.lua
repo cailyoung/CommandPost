@@ -1,36 +1,11 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---                             F E E D B A C K                                --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === plugins.core.helpandsupport.feedback ===
 ---
 --- Feedback Menu Item.
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
+local require = require
 
---------------------------------------------------------------------------------
--- CommandPost Extensions:
---------------------------------------------------------------------------------
-local feedback          = require("cp.feedback")
+local i18n      = require("cp.i18n")
 
---------------------------------------------------------------------------------
---
--- CONSTANTS:
---
---------------------------------------------------------------------------------
-local PRIORITY          = 2
-
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
 local mod = {}
 
 --- plugins.core.helpandsupport.feedback.show() -> nil
@@ -43,43 +18,32 @@ local mod = {}
 --- Returns:
 ---  * None
 function mod.show()
-    feedback.showFeedback()
+    os.execute('open "https://commandpost.fcp.cafe/support/"')
 end
 
---------------------------------------------------------------------------------
---
--- THE PLUGIN:
---
---------------------------------------------------------------------------------
 local plugin = {
     id              = "core.helpandsupport.feedback",
     group           = "core",
     dependencies    = {
-        ["core.menu.helpandsupport.commandpost"]    = "helpandsupport",
-        ["core.commands.global"]        = "global",
+        ["core.menu.manager"] = "menuManager",
+        ["core.commands.global"] = "global",
     }
 }
 
---------------------------------------------------------------------------------
--- INITIALISE PLUGIN:
---------------------------------------------------------------------------------
 function plugin.init(deps)
-
     --------------------------------------------------------------------------------
     -- Commands:
     --------------------------------------------------------------------------------
-    local global = deps.global
-    global:add("cpFeedback")
+    deps.global
+        :add("cpFeedback")
         :whenActivated(mod.show)
         :groupedBy("helpandsupport")
 
     --------------------------------------------------------------------------------
     -- Menubar:
     --------------------------------------------------------------------------------
-    deps.helpandsupport:addItem(PRIORITY, function()
-        return { title = i18n("provideFeedback") .. "...",  fn = mod.show }
-    end)
-    :addSeparator(PRIORITY+0.1)
+    deps.menuManager.bottom
+        :addItem(9999998, function() return { title = i18n("provideFeedbackOrReportBug"),  fn = mod.show } end)
 
     return mod
 end

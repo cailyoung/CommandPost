@@ -1,0 +1,510 @@
+<style>{(css/midi.css)}</style>
+<script>
+	function changeMidiDevice(buttonID, value) {
+		try {
+			var result = {
+				id: "midiPanelCallback",
+				params: {
+					type: "updateDevice",
+					application: document.getElementById("application").value,
+					bank: document.getElementById("bank").value,
+					buttonID: buttonID,
+					device: value,
+				},
+			}
+			postMessage(result);
+		} catch(err) {
+			alertErrorMessage(err);
+		}
+	}
+
+	function changeMidiCommandType(buttonID, value) {
+		try {
+			var result = {
+				id: "midiPanelCallback",
+				params: {
+					type: "updateCommandType",
+					application: document.getElementById("application").value,
+					bank: document.getElementById("bank").value,
+					buttonID: buttonID,
+					commandType: value,
+				},
+			}
+			postMessage(result);
+		} catch(err) {
+			alertErrorMessage(err);
+		}
+	}
+
+	function changeMidiNumber(buttonID, value) {
+		try {
+			var result = {
+				id: "midiPanelCallback",
+				params: {
+					type: "updateNumber",
+					application: document.getElementById("application").value,
+					bank: document.getElementById("bank").value,
+					buttonID: buttonID,
+					number: value,
+				},
+			}
+			postMessage(result);
+		} catch(err) {
+			alertErrorMessage(err);
+		}
+	}
+
+	function changeMidiChannel(buttonID, value) {
+		try {
+			var result = {
+				id: "midiPanelCallback",
+				params: {
+					type: "updateChannel",
+					application: document.getElementById("application").value,
+					bank: document.getElementById("bank").value,
+					buttonID: buttonID,
+					channel: value,
+				},
+			}
+			postMessage(result);
+		} catch(err) {
+			alertErrorMessage(err);
+		}
+	}
+
+	function changeMidiValue(buttonID, value) {
+		try {
+			var result = {
+				id: "midiPanelCallback",
+				params: {
+					type: "updateValue",
+					application: document.getElementById("application").value,
+					bank: document.getElementById("bank").value,
+					buttonID: buttonID,
+					value: value,
+				},
+			}
+			postMessage(result);
+		} catch(err) {
+			alertErrorMessage(err);
+		}
+	}
+
+	function pressMidiAllButton(buttonID) {
+		try {
+			var result = {
+				id: "midiPanelCallback",
+				params: {
+					type: "applyToAll",
+					application: document.getElementById("application").value,
+					bank: document.getElementById("bank").value,
+					buttonID: buttonID,
+				},
+			}
+			postMessage(result);
+		} catch(err) {
+			alertErrorMessage(err);
+		}
+	}
+
+	function pressMidiActionButton(buttonID) {
+		try {
+			var result = {
+				id: "midiPanelCallback",
+				params: {
+					type: "updateAction",
+					application: document.getElementById("application").value,
+					bank: document.getElementById("bank").value,
+					buttonID: buttonID,
+				},
+			}
+			postMessage(result);
+		} catch(err) {
+			alertErrorMessage(err);
+		}
+	}
+
+	function pressMidiClearButton(buttonID) {
+		try {
+			var result = {
+				id: "midiPanelCallback",
+				params: {
+					type: "clear",
+					application: document.getElementById("application").value,
+					bank: document.getElementById("bank").value,
+					buttonID: buttonID,
+				},
+			}
+			postMessage(result);
+		} catch(err) {
+			alertErrorMessage(err);
+		}
+	}
+
+	function pressMidiLearnButton(buttonID) {
+		try {
+			var result = {
+				id: "midiPanelCallback",
+				params: {
+					type: "learnButton",
+					application: document.getElementById("application").value,
+					bank: document.getElementById("bank").value,
+					buttonID: buttonID,
+				},
+			}
+			postMessage(result);
+		} catch(err) {
+			alertErrorMessage(err);
+		}
+	}
+
+	function setMidiValue(buttonID, field, value) {
+		document.getElementById("midi" + groupID + "_button" + buttonID + "_" + field).value = value;
+	}
+
+	function startLearnMode(buttonID) {
+
+		var x = document.getElementsByClassName("midiLearnButton");
+		var i;
+		for (i = 0; i < x.length; i++) {
+		  x[i].style.visibility = "hidden";
+		}
+
+		var x = document.getElementsByTagName("tr");
+		var i;
+		for (i = 0; i < x.length; i++) {
+		  x[i].style.backgroundColor = "";
+		}
+
+		document.getElementById("button" + buttonID + "_learn").style.visibility = "visible";
+		document.getElementById("button" + buttonID + "_learn").innerHTML = '{{ i18n("stop") }}';
+	}
+
+	function stopLearnMode() {
+		var x = document.getElementsByClassName("midiLearnButton");
+		var i;
+		for (i = 0; i < x.length; i++) {
+		  x[i].style.visibility = "visible";
+		  x[i].innerHTML = '{{ i18n("learn") }}';
+		}
+
+		var x = document.getElementsByTagName("tr");
+		var i;
+		for (i = 0; i < x.length; i++) {
+		  x[i].style.backgroundColor = "";
+		}
+	}
+
+	function updateUI() {
+		try {
+			var result = {
+				id: "midiPanelCallback",
+				params: {
+					type: "updateUI",
+					application: document.getElementById("application").value,
+					bank: document.getElementById("bank").value,
+				},
+			}
+			postMessage(result);
+		} catch(err) {
+			alertErrorMessage(err);
+		}
+	}
+
+	function updateBankLabel() {
+		try {
+			var result = {
+				id: "midiPanelCallback",
+				params: {
+					type: "updateBankLabel",
+					application: document.getElementById("application").value,
+					bank: document.getElementById("bank").value,
+					bankLabel: document.getElementById("bankLabel").value,
+				},
+			}
+			postMessage(result);
+		} catch(err) {
+			alertErrorMessage(err);
+		}
+	}
+
+	function changeScrollAreaPosition() {
+		var element = document.getElementById("scrollArea")
+		if (element.scrollTop >= 0 && element.scrollTop <= element.scrollHeight) {
+			try {
+				var result = {
+					id: "midiPanelCallback",
+					params: {
+						type: "scrollBarPosition",
+						application: document.getElementById("application").value,
+						bank: document.getElementById("bank").value,
+						value: element.scrollTop,
+					},
+				}
+				postMessage(result);
+			} catch(err) {
+				alertErrorMessage(err);
+			}
+		}
+	}
+
+	function updateApplicationAndBank() {
+		try {
+			var result = {
+				id: "midiPanelCallback",
+				params: {
+					type: "updateApplicationAndBank",
+					application: document.getElementById("application").value,
+					bank: document.getElementById("bank").value,
+				},
+			}
+			postMessage(result);
+		} catch(err) {
+			alertErrorMessage(err);
+		}
+	}
+
+
+	function clickButton(callbackType) {
+		try {
+			var result = {
+				id: "midiPanelCallback",
+				params: {
+					type: callbackType,
+					application: document.getElementById("application").value,
+					bank: document.getElementById("bank").value,
+				},
+			}
+			postMessage(result);
+		} catch(err) {
+			alertErrorMessage(err);
+		}
+	}
+
+	function changeIgnore() {
+		try {
+			var result = {
+				id: "midiPanelCallback",
+				params: {
+					type: "changeIgnore",
+					application: document.getElementById("application").value,
+					ignore: document.getElementById("ignore").checked,
+				},
+			}
+			postMessage(result);
+		} catch(err) {
+			alertErrorMessage(err);
+		}
+	}
+
+</script>
+
+<table>
+	<thead>
+		<tr>
+			<th style="padding-left: 20px;">
+				<a class="button importSettings" href="#" style="font-weight: normal;" onclick="clickButton('importSettings')">{{ i18n("importSettings") }}</a>
+			</th>
+			<th style="padding-left: 10px;">
+				<a class="button importSettings" href="#" style="font-weight: normal;" onclick="clickButton('exportSettings')">{{ i18n("exportSettings") }}</a>
+			</th>
+			<th style="padding-left: 10px;">
+				<a class="button importSettings" href="#" style="font-weight: normal;" onclick="clickButton('openAudioMIDISetup')">{{ i18n("openAudioMIDISetup") }}</a>
+			</th>
+
+		</tr>
+	</thead>
+</table>
+<hr />
+
+<table style="text-align: left; vertical-align: text-bottom;">
+	<tr>
+		<th style="width: 10px;"></th>
+		<th style="width: 80px;">
+			<span style="font-weight:normal; font-size:13px;">{{ i18n("application") }}: </span>
+		</th>
+		<th style="width: 150px;">
+			<select id="application" style="width: 250px;" onchange="updateApplicationAndBank()">
+				<option value="All Applications">{{ i18n("unlistedAndIgnoredApplications") }}</option>
+				<option disabled>──────────</option>
+				{%
+				for id, label in spairs(builtInApps, function(t,a,b) return t[a] < t[b] end) do
+					local selected = ""
+					if lastApplication == id then
+						selected = [[selected=""]]
+					end
+				%}
+				<option {{selected}} value="{{id}}">{{label}}</option>
+				{% end %}
+				<option disabled>──────────</option>
+				{%
+				local atLeastOne = false
+				for id, label in spairs(userApps, function(t,a,b) return t[a] < t[b] end) do
+					atLeastOne = true
+					local selected = ""
+					if lastApplication == id then
+						selected = [[selected=""]]
+					end
+				%}
+				<option {{selected}} value="{{id}}">{{label}}</option>
+				{%
+				end
+				if atLeastOne then
+				%}
+				<option disabled>──────────</option>
+				{%
+				end
+				%}
+				<option value="Add Application">{{ i18n("addApplication") }}</option>
+			</select>
+		</th>
+		<th style="width: 40px;"></th>
+		<th style="width: 150px;">
+			<span id="ignoreApp">
+				<input type="checkbox" value="ignore" id="ignore" onchange="changeIgnore()">
+		  		<label for="ignore"> <span style="font-weight:normal; font-size:13px; padding-left:5px;">{{ i18n("ignoreApplication") }}</span></label>
+	  		</span>
+		</th>
+	</tr>
+</table>
+<table style="text-align: left; vertical-align: text-bottom;">
+	<tr>
+		<th style="width: 10px;"></th>
+		<th style="width: 80px;">
+			<span style="font-weight:normal; font-size:13px;">{{ i18n("bank") }}: </span>
+		</th>
+		<th style="width: 150px;">
+			<select id="bank" style="width: 35px;" onchange="updateApplicationAndBank()">
+				{%
+				for i=1, numberOfBanks do
+					local selected = ""
+					if lastBank == tostring(i) then
+						selected = [[selected=""]]
+					end
+				%}
+				<option {{selected}} value="{{i}}">{{i}}</option>
+				{% end %}
+			</select>
+		</th>
+		<th style="width: 140px;"></th>
+		<th style="width: 80px;">
+			<span style="font-weight:normal; font-size:13px; padding-left:5px;">{{ i18n("label") }}: </span>
+		</th>
+		<th style="width: 150px;">
+			<input type="text" id="bankLabel" class="midiLabel" value="" onchange="updateBankLabel()" placeholder="{{ i18n("none") }}">
+		</th>
+	</tr>
+</table>
+
+<div id="midiGroupControls" class="uiItem">
+	<table class="midi">
+		<thead>
+			<tr>
+				<th class="midiRowAction">{{ i18n("action") }}</th>
+				<th class="midiRowActionButton"></th>
+				<th class="midiRowDevice">{{ i18n("device") }}</th>
+				<th class="midiRowType">{{ i18n("commandType") }}</th>
+				<th class="midiRowNumber">{{ i18n("noteCC") }}</th>
+				<th class="midiRowChannel">{{ i18n("channel") }}</th>
+				<th class="midiRowValue">{{ i18n("value") }}</th>
+				<th class="midiRowLearn"></th>
+			</tr>
+		</thead>
+		<tbody onscroll="changeScrollAreaPosition()" id="scrollArea">
+{%
+for i=1,maxItems,1 do
+	local buttonID 		= tostring(i)
+%}
+		<tr id="row{{ buttonID }}">
+			<td class="midiRowAction">
+				<input type="text" id="button{{ buttonID }}_action" class="midiActionTextbox" value="" placeholder="{{ i18n('none') }}" disabled>
+			</td>
+			<td class="midiRowActionButton">
+				<a href="#" class="button midiActionButton" onclick="pressMidiActionButton('{{ buttonID }}')">{{ i18n("select") }}</a>
+			</td>
+			<td class="midiRowDevice">
+				<select id="button{{ buttonID }}_device" style="width:110px;" onchange="changeMidiDevice('{{ buttonID }}', this.value)">
+
+				</select>
+			</td>
+			<td class="midiRowType">
+				<select id="button{{ buttonID }}_commandType" style="width:130px;" onchange="changeMidiCommandType('{{ buttonID }}', this.value)">
+					<option value="">{{ i18n("none") }}</option>
+					<option value="noteOn">{{ i18n("noteOn") }}</option>
+					<option value="noteOff">{{ i18n("noteOff") }}</option>
+					<option value="controlChange">{{ i18n("controlChange") }}</option>
+					<option value="pitchWheelChange">{{ i18n("pitchWheelChange") }}</option>
+				</select>
+			</td>
+			<td class="midiRowNumber">
+				<input style="width: 35px;" type="text" id="button{{ buttonID }}_number" class="midiButtonLabel" placeholder="{{ i18n('none') }}" onchange="changeMidiNumber('{{ buttonID }}', this.value)">
+			</td>
+			<td class="midiRowChannel">
+				<select id="button{{ buttonID }}_channel" onchange="changeMidiChannel('{{ buttonID }}', this.value)">
+					{%
+					local selected = ""
+					if channel == i18n("none") then selected = [[selected=""]] end
+					%}
+					<option {{selected}} value="">{{i18n("none")}}</option>
+					{% for channelValue=0, 15 do
+						local selected = ""
+						if channel ~= i18n("none") then
+							if tostring(channel) == tostring(channelValue) then selected = [[selected=""]] end
+						end
+						local channelValueString = tostring(channelValue + 1)
+					%}
+						<option {{selected}} value="{{ channelValue }}">{{ channelValueString }}</option>
+					{% end %}
+				</select>
+			</td>
+			<td class="midiRowValue">
+				<input style="width: 40px;" type="text" id="button{{ buttonID }}_value" class="midiButtonLabel" onchange="changeMidiValue('{{ buttonID }}', this.value)" placeholder="{{ i18n("none") }}">
+			</td>
+			<td class="midiRowLearn">
+				<a href="#" class="button midiActionButton midiClearButton" onclick="pressMidiAllButton('{{ buttonID }}')">{{ i18n("all") }}</a>
+				<a href="#" class="button midiActionButton midiClearButton" onclick="pressMidiClearButton('{{ buttonID }}')">{{ i18n("clear") }}</a>
+				<a id="button{{ buttonID }}_learn" href="#" class="button midiActionButton midiLearnButton" onclick="pressMidiLearnButton('{{ buttonID }}')">{{ i18n("learn") }}</a>
+			</td>
+		</tr>
+{%
+end
+%}
+		</tbody>
+	</table>
+</div>
+
+<table>
+	<tr>
+		<th style="height: 10px;"></th>
+	</tr>
+	<tr>
+		<th style="width: 10px;"></th>
+		<th>
+			<a href="#" class="bottomButton" onclick="clickButton('applyTopDeviceToAll')">{{ i18n("applyTopDeviceToAll") }}</a>
+		</th>
+
+		<th>
+			<a href="#" class="bottomButton" onclick="clickButton('resetEverything')">{{ i18n("resetEverything") }}</a>
+		</th>
+		<th>
+			<a href="#" class="bottomButton" onclick="clickButton('resetApplication')">{{ i18n("resetApplication") }}</a>
+		</th>
+		<th>
+			<a href="#" class="bottomButton" onclick="clickButton('resetBank')">{{ i18n("resetBank") }}</a>
+		</th>
+	</tr>
+	<tr>
+		<th style="width: 10px;"></th>
+		<th>
+			<a href="#" class="bottomButton" onclick="clickButton('copyApplication')">{{ i18n("copyApplication") }}</a>
+		</th>
+		<th>
+			<a href="#" class="bottomButton" onclick="clickButton('copyBank')">{{ i18n("copyBank") }}</a>
+		</th>
+	</tr>
+</table>
+
+<script>
+	// Update UI on initial load:
+	updateUI();
+</script>

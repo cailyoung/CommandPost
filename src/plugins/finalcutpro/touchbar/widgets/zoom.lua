@@ -1,39 +1,14 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---                    T O U C H    B A R    W I D G E T                       --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === plugins.finalcutpro.touchbar.widgets.zoom ===
 ---
 --- Final Cut Pro Zoom Control Widget for Touch Bar.
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
+local require = require
 
---------------------------------------------------------------------------------
--- Hammerspoon Extensions:
---------------------------------------------------------------------------------
-local canvas            = require("hs.canvas")
+local canvas            = require "hs.canvas"
 
---------------------------------------------------------------------------------
--- CommandPost Extensions:
---------------------------------------------------------------------------------
-local fcp               = require("cp.apple.finalcutpro")
+local fcp               = require "cp.apple.finalcutpro"
+local i18n              = require "cp.i18n"
 
---------------------------------------------------------------------------------
--- 3rd Party Extensions:
---------------------------------------------------------------------------------
-local touchbar          = require("hs._asm.undocumented.touchbar")
-
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
 local mod = {}
 
 --- plugins.finalcutpro.touchbar.widgets.zoom.widget() -> `hs._asm.undocumented.touchbar.item`
@@ -95,7 +70,7 @@ function mod.widget()
     widgetCanvas:canvasMouseEvents(true, true, false, true)
         :mouseCallback(function(o,m,i,x,y) -- luacheck: ignore
 
-            if not fcp.isFrontmost() or not fcp:timeline():isShowing() then return end
+            if not fcp.isFrontmost() or not fcp.timeline:isShowing() then return end
 
             widgetCanvas.circle.center = {
                 x = x,
@@ -113,19 +88,19 @@ function mod.widget()
             }
 
             if m == "mouseDown" or m == "mouseMove" then
-                local appearance = fcp:timeline():toolbar():appearance()
+                local appearance = fcp.timeline.toolbar.appearance
                 if appearance then
-                    appearance:show():zoomAmount():setValue(x/(canvasWidth/10))
+                    appearance:show().zoomAmount:setValue(x/(canvasWidth/10))
                 end
             elseif m == "mouseUp" then
-                local appearance = fcp:timeline():toolbar():appearance()
+                local appearance = fcp.timeline.toolbar.appearance
                 if appearance then
-                    fcp:timeline():toolbar():appearance():hide()
+                    appearance:hide()
                 end
             end
     end)
 
-    mod.item = touchbar.item.newCanvas(widgetCanvas, "zoomSlider")
+    mod.item = mod._manager.touchbar().item.newCanvas(widgetCanvas, "zoomSlider")
         :canvasClickColor{ alpha = 0.0 }
 
     return mod.item
@@ -141,25 +116,22 @@ end
 ---
 --- Returns:
 ---  * None
-function mod.init(deps)
+function mod.init(manager)
+    mod._manager = manager
 
     local params = {
         group = "fcpx",
-        text = "Zoom Slider",
-        subText = "Allows you to control timeline zoom.",
+        text = i18n("zoomSlider"),
+        subText = i18n("zoomSliderDescription"),
         item = mod.widget,
     }
-    deps.manager.widgets:new("zoomSlider", params)
+    manager.widgets:new("zoomSlider", params)
 
     return mod
 
 end
 
---------------------------------------------------------------------------------
---
--- THE PLUGIN:
---
---------------------------------------------------------------------------------
+
 local plugin = {
     id              = "finalcutpro.touchbar.widgets.zoom",
     group           = "finalcutpro",
@@ -168,12 +140,15 @@ local plugin = {
     }
 }
 
---------------------------------------------------------------------------------
--- INITIALISE PLUGIN:
---------------------------------------------------------------------------------
 function plugin.init(deps)
-    if touchbar.supported() then
-        return mod.init(deps)
+    --------------------------------------------------------------------------------
+    -- Only load plugin if Final Cut Pro is supported:
+    --------------------------------------------------------------------------------
+    if not fcp:isSupported() then return end
+
+    local manager = deps.manager
+    if manager.supported() then
+        return mod.init(manager)
     end
 end
 

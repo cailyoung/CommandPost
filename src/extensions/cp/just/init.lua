@@ -1,32 +1,21 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---                          J U S T     L I B R A R Y                         --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === cp.just ===
 ---
 --- This module provides functions to help with performing tasks which may be
 --- delayed, up to a finite number of loops.
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
-local timer 					= require("hs.timer")
+local require = require
 
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
+local timer                 = require("hs.timer")
+
+local secondsSinceEpoch     = timer.secondsSinceEpoch
+local usleep                = timer.usleep
+
+
 local just = {}
 
 --- cp.just.doWhile(actionFn[, timeout[, frequency]]) -> value
 --- Function
---- Performs an 'action' function, looping while the result of the function evaluates to `true`.
---- It will halt after `timeout` seconds, checking with the specified `frequency`.
+--- Performs an 'action' function, looping while the result of the function evaluates to `true`. It will halt after `timeout` seconds, checking with the specified `frequency`.
 ---
 --- Parameters:
 ---  * `actionFn`	- a fuction which is called on each loop. It should return a 'truthy' value.
@@ -36,48 +25,47 @@ local just = {}
 --- Returns:
 ---  * The last return value of the action function.
 function just.doWhile(actionFn, timeout, frequency)
-	timeout = timeout or 1.0
-	frequency = frequency or 0.001
+    timeout = timeout or 1.0
+    frequency = frequency or 0.001
 
-	local period = frequency * 1000000
-	local stopTime = timer.secondsSinceEpoch() + timeout
+    local period = frequency * 1000000
+    local stopTime = secondsSinceEpoch() + timeout
 
-	local result = true
-	while result and timer.secondsSinceEpoch() < stopTime do
-		result = actionFn()
-		timer.usleep(period)
-	end
-	return result
+    local result = true
+    while result and secondsSinceEpoch() < stopTime do
+        result = actionFn()
+        usleep(period)
+    end
+    return result
 end
 
 --- cp.just.doUntil(actionFn[, timeout[, frequency]]) -> value
 --- Function
---- Performs an `action` function, looping until the result of the function evaluates to `true` (or a non-nil value).
---- It will halt after the `timeout` in seconds after checking every `frequency` seconds.
+--- Performs an `action` function, looping until the result of the function evaluates to `true` (or a non-nil value). It will halt after the `timeout` in seconds after checking every `frequency` seconds.
 ---
 --- Parameters:
 ---  * `actionFn`	- a fuction which is called on each loop. It should return a 'truthy' value.
 ---  * `timeout`	- (optional) the number of seconds after which we will give up. Defaults to 1 second.
----  * `frequency`	- (optional) the amount of time between checks. Defaults to 1 millisecond.
+---  * `frequency`	- (optional) the amount of time in seconds between checks. Defaults to 1 millisecond.
 ---
 --- Returns:
 ---  * The last return value of the action function.
 function just.doUntil(actionFn, timeout, frequency)
-	timeout = timeout or 1.0
-	frequency = frequency or 0.001
+    timeout = timeout or 1.0
+    frequency = frequency or 0.001
 
-	local period = frequency * 1000000
-	local stopTime = timer.secondsSinceEpoch() + timeout
+    local period = frequency * 1000000
+    local stopTime = secondsSinceEpoch() + timeout
 
-	local result = false
-	while not result and timer.secondsSinceEpoch() < stopTime do
-		result = actionFn()
-		timer.usleep(period)
-	end
-	return result
+    local result = false
+    while not result and secondsSinceEpoch() < stopTime do
+        result = actionFn()
+        usleep(period)
+    end
+    return result
 end
 
---- cp.just.wait(integer) -> nil
+--- cp.just.wait(periodInSeconds) -> nil
 --- Function
 --- Pauses the application for the specified number of seconds.
 ---
@@ -87,7 +75,7 @@ end
 --- Returns:
 ---  * None
 function just.wait(periodInSeconds)
-	timer.usleep(periodInSeconds * 1000000)
+    usleep(periodInSeconds * 1000000)
 end
 
 return just

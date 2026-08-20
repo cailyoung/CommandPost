@@ -1,9 +1,3 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---                   C  O  M  M  A  N  D  P  O  S  T                          --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === plugins.core.action.handler ===
 ---
 --- A support class for handler handlers. It is not used directly, rather
@@ -20,47 +14,34 @@
 --- The choices added to the `choices` should have the `params` value set to a table
 --- containing the details of the action to execute if the choice is selected.
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
+local require   = require
 
---------------------------------------------------------------------------------
--- Logger:
---------------------------------------------------------------------------------
-local log               = require("hs.logger").new("actnhndlr")
+local log       = require "hs.logger".new "actnhndlr"
 
---------------------------------------------------------------------------------
--- CommandPost Extensions:
---------------------------------------------------------------------------------
-local choices           = require("cp.choices")
-local prop              = require("cp.prop")
+local choices   = require "cp.choices"
+local prop      = require "cp.prop"
 
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
 local handler = {}
 
 handler.mt = {}
 handler.mt.__index = handler.mt
 
---- plugins.core.action.handler.new(id, group) -> handler
+--- plugins.core.action.handler.new(id, group, label) -> handler
 --- Constructor
 --- Creates a new handler with the specified ID.
 ---
 --- Parameters:
---- * `id`      - The unique ID of the action handler.
---- * `group`   - The group the handler belongs to.
+---  * `id`      - The unique ID of the action handler.
+---  * `group`   - The group the handler belongs to.
+---  * `label`   - An optional label for the handler (over-riding a supplied i18n value)
 ---
 --- Returns:
---- * The new action handler instance.
-function handler.new(id, group)
+---  * The new action handler instance.
+function handler.new(id, group, label)
     local o = {
         _id = id,
-        _group = group
+        _group = group,
+        _label = label,
     }
 
     return prop.extend(o, handler.mt)
@@ -68,14 +49,13 @@ end
 
 --- plugins.core.action.handler:onExecute(executeFn) -> handler
 --- Method
---- Configures the function to call when a choice is executed. This will be passed
---- the choice parameters in a single table.
+--- Configures the function to call when a choice is executed. This will be passed the choice parameters in a single table.
 ---
 --- Parameters:
---- * `executeFn`       - The function to call when executing.
+---  * `executeFn`       - The function to call when executing.
 ---
 --- Returns:
---- * This action handler.
+---  * This action handler.
 function handler.mt:onExecute(executeFn)
     self._onExecute = executeFn
     return self
@@ -83,15 +63,13 @@ end
 
 --- plugins.core.action.handler:onChoices(choicesFn) -> handler
 --- Method
---- Adds a callback function which will receive the `cp.choices` instance to add
---- choices to. This will only get called when required - the results will be cached
---- if the [cached](#cached) property is set to `true`.
+--- Adds a callback function which will receive the `cp.choices` instance to add choices to. This will only get called when required - the results will be cached if the [cached](#cached) property is set to `true`.
 ---
 --- Parameters:
---- * `choicesFn`       - The function with the signature of `function(choices) -> nothing`
+---  * `choicesFn`       - The function with the signature of `function(choices) -> nothing`
 ---
 --- Returns:
---- * This action handler.
+---  * This action handler.
 function handler.mt:onChoices(choicesFn)
     self._onChoices = choicesFn
     return self
@@ -99,14 +77,13 @@ end
 
 --- plugins.core.action.handler:onActionId(actionFn) -> handler
 --- Method
---- Configures a function to handle converting an action to unique ID.
---- The function is passed the `action` table and should return a string.
+--- Configures a function to handle converting an action to unique ID. The function is passed the `action` table and should return a string.
 ---
 --- Parameters:
---- * `actionFn`    - The function with a signature of `function(action) -> string`
+---  * `actionFn`    - The function with a signature of `function(action) -> string`
 ---
 --- Returns:
---- * This action handler.
+---  * This action handler.
 function handler.mt:onActionId(actionFn)
     self._onActionId = actionFn
     return self
@@ -117,10 +94,10 @@ end
 --- Returns the group for this handler.
 ---
 --- Parameters:
---- * None
+---  * None
 ---
 --- Returns:
---- * Group as string.
+---  * Group as string.
 function handler.mt:group()
     return self._group
 end
@@ -130,12 +107,25 @@ end
 --- Returns the ID for this handler.
 ---
 --- Parameters:
---- * None
+---  * None
 ---
 --- Returns:
---- * The ID string.
+---  * The ID string.
 function handler.mt:id()
     return self._id
+end
+
+--- plugins.core.action.handler:label() -> string
+--- Method
+--- Returns the label for this handler.
+---
+--- Parameters:
+---  * None
+---
+--- Returns:
+---  * The ID string.
+function handler.mt:label()
+    return self._label
 end
 
 --- plugins.core.action.handler.cached <cp.prop: boolean>
@@ -143,7 +133,7 @@ end
 --- If set to `true` (the default), any choices created will be cached until [reset] is called.
 handler.mt.cached = prop.TRUE()
 :bind(handler.mt)
-:watch(function(cached, self)
+:watch(function(_, self)
     -- reset the cache
     self:reset()
 end)
@@ -170,26 +160,41 @@ handler.mt.choices = prop(function(self)
 end)
 :bind(handler.mt)
 
--- plugins.core.action.handler._onChoices(choices) -> nil
--- Method
+-- plugins.core.action.handler._onChoices() -> none
+-- Function
 -- Default handler for adding choices. Throws an error message.
 --
 -- Parameters:
--- * `choices`  - The `cp.choices` to add to.
+-- * None
 --
 -- Returns:
--- * Nothing
-function handler.mt:_onChoices(choices)
+-- * None
+function handler.mt._onChoices(_)
     log.df("unimplemented: handler:onChoices(choicesFn)")
 end
 
-function handler.mt:_onActionId(action)
+-- plugins.core.action.handler._onActionId() -> none
+-- Function
+-- Default handler for returning action ID. Throws an error message.
+--
+-- Parameters:
+-- * None
+--
+-- Returns:
+-- * None
+function handler.mt._onActionId(_)
     log.df("unimplemented: handler:onActionId(actionFn)")
 end
 
 --- plugins.core.action.handler:actionId(action) -> string
 --- Method
 --- Returns a string that can be used as a unique ID for the action details.
+---
+--- Parameters:
+---  * None
+---
+--- Returns:
+---  * None
 function handler.mt:actionId(action)
     return self._onActionId(action)
 end
@@ -203,7 +208,7 @@ end
 --
 -- Returns:
 -- * Nothing
-function handler.mt._onExecute(action)
+function handler.mt._onExecute(_)
     log.df("unimplemented: handler:onExecute(executeFn)")
 end
 
@@ -212,10 +217,10 @@ end
 --- Executes the action, based on values in the table.
 ---
 --- Parameters:
---- * `action`      - A table of details about the action.
+---  * `action`      - A table of details about the action.
 ---
 --- Returns:
---- * `true` if the execution succeeded.
+---  * `true` if the execution succeeded.
 function handler.mt:execute(action)
     if action then
         return self._onExecute(action) ~= false
@@ -228,10 +233,10 @@ end
 --- Resets the handler, clearing any cached result and requesting new ones.
 ---
 --- Parameters:
---- * `updateNow`   - (optional) If `true`, the choices will update immediately, otherwise they will update when the choices are next requested.
+---  * `updateNow`   - (optional) If `true`, the choices will update immediately, otherwise they will update when the choices are next requested.
 ---
 --- Returns:
---- * Nothing
+---  * Nothing
 function handler.mt:reset(updateNow)
     self._choices = nil
     if updateNow then

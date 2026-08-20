@@ -1,31 +1,15 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---               V I R T U A L   T O U C H B A R     P L U G I N              --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === plugins.finalcutpro.touchbar.virtual ===
 ---
 --- Virtual Touch Bar Plugin.
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
+local require = require
 
---------------------------------------------------------------------------------
--- CommandPost Extensions:
---------------------------------------------------------------------------------
 local config                                    = require("cp.config")
 local dialog                                    = require("cp.dialog")
 local fcp                                       = require("cp.apple.finalcutpro")
+local i18n                                      = require("cp.i18n")
 
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
+
 local mod = {}
 
 --- plugins.finalcutpro.touchbar.virtual.VISIBILITY_ALWAYS -> string
@@ -59,14 +43,27 @@ mod.visibility = config.prop("virtualTouchBarVisibility", mod.VISIBILITY_FCP)
 --  * None
 function mod._checkVisibility(active)
     if mod.visibility() == mod.VISIBILITY_ALWAYS then
-        mod._manager.virtual.show()
+        mod._virtual.show()
     else
         if active then
-            mod._manager.virtual.show()
+            mod._virtual.show()
         else
-            mod._manager.virtual.hide()
+            mod._virtual.hide()
         end
     end
+end
+
+-- updateStatus(enabled) -> none
+-- Function
+-- Update a Touch Bar Group Status
+--
+-- Parameters:
+--  * enabled - `true` if enabled, otherwise `false`
+--
+-- Returns:
+--  * None
+local function updateStatus(enabled)
+    mod._tbManager.groupStatus("fcpx", enabled)
 end
 
 --- plugins.finalcutpro.touchbar.virtual.enabled <cp.prop: boolean>
@@ -76,7 +73,7 @@ mod.enabled = config.prop("displayVirtualTouchBar", false):watch(function(enable
     --------------------------------------------------------------------------------
     -- Check for compatibility:
     --------------------------------------------------------------------------------
-    if enabled and not mod._manager.supported() then
+    if enabled and not mod._virtual.supported() then
         dialog.displayMessage(i18n("touchBarError"))
         mod.enabled(false)
     end
@@ -85,29 +82,33 @@ mod.enabled = config.prop("displayVirtualTouchBar", false):watch(function(enable
         --------------------------------------------------------------------------------
         -- Add Callbacks to Control Location:
         --------------------------------------------------------------------------------
-        mod.updateLocationCallback = mod._manager.virtual.updateLocationCallback:new("fcp", function()
+        mod.updateLocationCallback = mod._virtual.updateLocationCallback:new("fcp", function()
 
-            local displayVirtualTouchBarLocation = mod._manager.virtual.location()
+            local displayVirtualTouchBarLocation = mod._virtual.location()
 
             --------------------------------------------------------------------------------
             -- Show Touch Bar at Top Centre of Timeline:
             --------------------------------------------------------------------------------
-            local timeline = fcp:timeline()
+            local timeline = fcp.timeline
             if timeline and displayVirtualTouchBarLocation == mod.LOCATION_TIMELINE and timeline:isShowing() then
                 --------------------------------------------------------------------------------
                 -- Position Touch Bar to Top Centre of Final Cut Pro Timeline:
                 --------------------------------------------------------------------------------
-                local viewFrame = timeline:contents():viewFrame()
+                local viewFrame = timeline.contents:viewFrame()
                 if viewFrame then
-                    local topLeft = {x = viewFrame.x + viewFrame.w/2 - mod._manager.touchBar():getFrame().w/2, y = viewFrame.y + 20}
-                    mod._manager.touchBar():topLeft(topLeft)
+                    if mod._virtual._touchBar then
+                        local topLeft = {x = viewFrame.x + viewFrame.w/2 - mod._virtual._touchBar:getFrame().w/2, y = viewFrame.y + 20}
+                        mod._virtual._touchBar:topLeft(topLeft)
+                    end
                 end
-            elseif displayVirtualTouchBarLocation == mod._manager.virtual.LOCATION_MOUSE then
+            elseif displayVirtualTouchBarLocation == mod._virtual.LOCATION_MOUSE then
 
                 --------------------------------------------------------------------------------
                 -- Position Touch Bar to Mouse Pointer Location:
                 --------------------------------------------------------------------------------
-                mod._manager.touchBar():atMousePosition()
+                if mod._virtual._touchBar then
+                    mod._virtual._touchBar:atMousePosition()
+                end
 
             end
         end)
@@ -115,39 +116,37 @@ mod.enabled = config.prop("displayVirtualTouchBar", false):watch(function(enable
         --------------------------------------------------------------------------------
         -- Update Touch Bar Buttons when FCPX is active:
         --------------------------------------------------------------------------------
-        mod._fcpWatchID = fcp:watch({
-            active      = function() mod._manager.groupStatus("fcpx", true) end,
-            show        = function() mod._manager.groupStatus("fcpx", true) end,
-            inactive    = function() mod._manager.groupStatus("fcpx", false) end,
-            hide        = function() mod._manager.groupStatus("fcpx", false) end,
-        })
+        fcp.app.frontmost:watch(updateStatus)
+        fcp.app.showing:watch(updateStatus)
 
         --------------------------------------------------------------------------------
         -- Disable/Enable the Touchbar when the Command Editor/etc is open:
         --------------------------------------------------------------------------------
-        mod._fcpCommandEditorWatcher = fcp.isFrontmost:AND(fcp.isModalDialogOpen:NOT()):watch(mod._checkVisibility)
+        mod.isActive = fcp.isFrontmost:AND(fcp.isModalDialogOpen:NOT())
+        :bind(mod, "isActive")
+        :watch(mod._checkVisibility)
 
         --------------------------------------------------------------------------------
         -- Update the Virtual Touch Bar position if either of the main windows move:
         --------------------------------------------------------------------------------
-        mod._fcpPrimaryWindowWatcher = fcp:primaryWindow().frame:watch(mod._manager.virtual.updateLocation)
-        mod._fcpSecondaryWindowWatcher = fcp:secondaryWindow().frame:watch(mod._manager.virtual.updateLocation)
+        fcp.primaryWindow.frame:watch(mod._virtual.updateLocation)
+        fcp.secondaryWindow.frame:watch(mod._virtual.updateLocation)
 
         --------------------------------------------------------------------------------
         -- Start the Virtual Touch Bar:
         --------------------------------------------------------------------------------
-        mod._manager.virtual.start()
+        mod._virtual.start()
 
         --------------------------------------------------------------------------------
         -- Update the visibility:
         --------------------------------------------------------------------------------
         if mod.visibility() == mod.VISIBILITY_ALWAYS then
-            mod._manager.virtual.show()
+            mod._virtual.show()
         else
             if fcp.isFrontmost() then
-                mod._manager.virtual.show()
+                mod._virtual.show()
             else
-                mod._manager.virtual.hide()
+                mod._virtual.hide()
             end
         end
 
@@ -155,20 +154,19 @@ mod.enabled = config.prop("displayVirtualTouchBar", false):watch(function(enable
         --------------------------------------------------------------------------------
         -- Destroy Watchers:
         --------------------------------------------------------------------------------
-        if mod._fcpWatchID and mod._fcpWatchID.id then
-            fcp:unwatch(mod._fcpWatchID.id)
-            mod._fcpWatchID = nil
-        end
-        if mod._fcpCommandEditorWatcher then
-            mod._fcpCommandEditorWatcher:unwatch(mod._checkVisibility)
-            mod._fcpCommandEditorWatcher = nil
+        fcp.app.frontmost:unwatch(updateStatus)
+        fcp.app.showing:unwatch(updateStatus)
+
+        if mod.isActive then
+            mod.isActive:unwatch(mod._checkVisibility)
+            mod.isActive = nil
         end
         if mod._fcpPrimaryWindowWatcher then
-            mod._fcpPrimaryWindowWatcher:unwatch(mod._manager.virtual.updateLocation)
+            mod._fcpPrimaryWindowWatcher:unwatch(mod._virtual.updateLocation)
             mod._fcpPrimaryWindowWatcher = nil
         end
         if mod._fcpSecondaryWindowWatcher then
-            fcp:secondaryWindow().frame:unwatch(mod._manager.virtual.updateLocation)
+            fcp.secondaryWindow.frame:unwatch(mod._virtual.updateLocation)
             mod._fcpSecondaryWindowWatcher = nil
         end
         if mod.updateLocationCallback then
@@ -179,39 +177,37 @@ mod.enabled = config.prop("displayVirtualTouchBar", false):watch(function(enable
         --------------------------------------------------------------------------------
         -- Stop the Virtual Touch Bar:
         --------------------------------------------------------------------------------
-        mod._manager.virtual.stop()
+        mod._virtual.stop()
     end
 end)
 
---------------------------------------------------------------------------------
---
--- THE PLUGIN:
---
---------------------------------------------------------------------------------
 local plugin = {
     id = "finalcutpro.touchbar.virtual",
     group = "finalcutpro",
     dependencies = {
         ["finalcutpro.commands"]        = "fcpxCmds",
-        ["core.touchbar.manager"]       = "manager",
+        ["core.touchbar.virtual"]       = "manager",
+        ["core.touchbar.manager"]       = "tbManager",
         ["core.commands.global"]        = "global",
     }
 }
 
---------------------------------------------------------------------------------
--- INITIALISE PLUGIN:
---------------------------------------------------------------------------------
 function plugin.init(deps)
+    --------------------------------------------------------------------------------
+    -- Only load plugin if Final Cut Pro is supported:
+    --------------------------------------------------------------------------------
+    if not fcp:isSupported() then return end
 
     --------------------------------------------------------------------------------
     -- Connect to Manager:
     --------------------------------------------------------------------------------
-    mod._manager = deps.manager
+    mod._virtual = deps.manager
+    mod._tbManager = deps.tbManager
 
     --------------------------------------------------------------------------------
     -- Add Commands if Supported:
     --------------------------------------------------------------------------------
-    if mod._manager.supported() then
+    if mod._virtual.supported() then
         --------------------------------------------------------------------------------
         -- Final Cut Pro Command:
         --------------------------------------------------------------------------------
@@ -232,10 +228,12 @@ function plugin.init(deps)
     return mod
 end
 
---------------------------------------------------------------------------------
--- POST INITIALISE PLUGIN:
---------------------------------------------------------------------------------
 function plugin.postInit()
+    --------------------------------------------------------------------------------
+    -- Only load plugin if Final Cut Pro is supported:
+    --------------------------------------------------------------------------------
+    if not fcp:isSupported() then return end
+
     --------------------------------------------------------------------------------
     -- Update visibility:
     --------------------------------------------------------------------------------

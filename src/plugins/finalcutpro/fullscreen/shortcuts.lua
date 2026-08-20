@@ -1,50 +1,23 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---                 F U L L S C R E E N     S H O R T C U T S                  --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === plugins.finalcutpro.fullscreen.shortcuts ===
 ---
 --- Fullscreen Shortcuts
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
+local require               = require
 
---------------------------------------------------------------------------------
--- Logger:
---------------------------------------------------------------------------------
-local log                               = require("hs.logger").new("fullscreenShortcuts") -- luacheck: ignore
+local eventtap              = require "hs.eventtap"
+local timer                 = require "hs.timer"
 
---------------------------------------------------------------------------------
--- Hammerspoon Extensions:
---------------------------------------------------------------------------------
-local eventtap                          = require("hs.eventtap")
-local timer                             = require("hs.timer")
+local commandeditor         = require "cp.apple.commandeditor"
+local config                = require "cp.config"
+local fcp                   = require "cp.apple.finalcutpro"
+local i18n                  = require "cp.i18n"
+local shortcut              = require "cp.commands.shortcut"
 
---------------------------------------------------------------------------------
--- CommandPost Extensions:
---------------------------------------------------------------------------------
-local fcp                               = require("cp.apple.finalcutpro")
-local config                            = require("cp.config")
-local shortcut                          = require("cp.commands.shortcut")
-local tools                             = require("cp.tools")
+local doAfter               = timer.doAfter
 
---------------------------------------------------------------------------------
---
--- CONSTANTS:
---
---------------------------------------------------------------------------------
+local mod = {}
 
--- DEFAULT_VALUE
--- Constant
--- Whether or not this plugin is enabled by default.
-local DEFAULT_VALUE = false
-
--- FULLSCREEN_KEYS
+-- FULLSCREEN_KEYS -> table
 -- Constant
 -- Supported Full Screen Keys
 local FULLSCREEN_KEYS = {
@@ -58,13 +31,6 @@ local FULLSCREEN_KEYS = {
     "AppendWithSelectedMedia"
 }
 
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
-local mod = {}
-
 --- plugins.finalcutpro.fullscreen.shortcuts.update() -> none
 --- Function
 --- Toggles the watches for monitoring fullscreen playback.
@@ -75,7 +41,7 @@ local mod = {}
 --- Returns:
 ---  * None
 function mod.update()
-    if mod.enabled() and fcp:fullScreenWindow():isShowing() then
+    if mod.enabled() and fcp.fullScreenPlayer:isShowing() then
         if mod.keyUpWatcher then
             mod.keyUpWatcher:start()
         end
@@ -95,23 +61,18 @@ end
 --- plugins.finalcutpro.fullscreen.shortcuts.enabled <cp.prop: boolean>
 --- Variable
 --- Is the module enabled?
-mod.enabled = config.prop("enableShortcutsDuringFullscreenPlayback", DEFAULT_VALUE):watch(function(enabled)
+mod.enabled = config.prop("enableShortcutsDuringFullscreenPlayback", false):watch(function(enabled)
     if enabled then
         --------------------------------------------------------------------------------
         -- Watch for the full screen window:
         --------------------------------------------------------------------------------
-        if not mod._fcpFullScreenWindowWatcher then
-            mod._fcpFullScreenWindowWatcher = fcp:fullScreenWindow():watch({
-                show    = mod.update,
-                hide    = mod.update,
-            })
-        end
+        fcp.fullScreenPlayer.isFullScreen:watch(mod.update)
 
         mod.watcherWorking = false
 
         if not mod.keyUpWatcher then
             mod.keyUpWatcher = eventtap.new({ eventtap.event.types.keyUp }, function()
-                timer.doAfter(0.0000001, function()
+                doAfter(0.0000001, function()
                     mod.watcherWorking = false
                 end)
             end)
@@ -119,7 +80,7 @@ mod.enabled = config.prop("enableShortcutsDuringFullscreenPlayback", DEFAULT_VAL
 
         if not mod.keyDownWatcher then
             mod.keyDownWatcher = eventtap.new({ eventtap.event.types.keyDown }, function(event)
-                timer.doAfter(0.0000001, function() mod.checkCommand(event:getFlags(), event:getKeyCode()) end)
+                doAfter(0.0000001, function() mod.checkCommand(event:getFlags(), event:getKeyCode()) end)
             end)
         end
 
@@ -128,10 +89,7 @@ mod.enabled = config.prop("enableShortcutsDuringFullscreenPlayback", DEFAULT_VAL
         --------------------------------------------------------------------------------
         -- Destroy Watchers:
         --------------------------------------------------------------------------------
-        if mod._fcpFullScreenWindowWatcher and mod._fcpFullScreenWindowWatcher.id then
-            fcp:fullScreenWindow():unwatch(mod._fcpFullScreenWindowWatcher.id)
-            mod._fcpFullScreenWindowWatcher = nil
-        end
+        fcp.fullScreenPlayer.isFullScreen:unwatch(mod.update)
         if mod.keyUpWatcher then
             mod.keyUpWatcher:stop()
             mod.keyUpWatcher = nil
@@ -158,17 +116,17 @@ function mod.ninjaKeyStroke(whichModifier, whichKey)
     --------------------------------------------------------------------------------
     -- Press 'Escape':
     --------------------------------------------------------------------------------
-    eventtap.keyStroke({""}, "escape")
+    fcp:keyStroke({}, "escape")
 
     --------------------------------------------------------------------------------
     -- Perform Keystroke:
     --------------------------------------------------------------------------------
-    eventtap.keyStroke(whichModifier, whichKey)
+    fcp:keyStroke(whichModifier, whichKey)
 
     --------------------------------------------------------------------------------
     -- Go back to Full Screen Playback:
     --------------------------------------------------------------------------------
-    fcp:performShortcut("PlayFullscreen")
+    fcp:doShortcut("PlayFullscreen"):Now()
 end
 
 --- plugins.finalcutpro.fullscreen.shortcuts.performCommand(cmd, whichModifier, whichKey) -> boolean
@@ -184,7 +142,7 @@ end
 ---  * `true` if successful otherwise `false`
 function mod.performCommand(cmd, whichModifier, whichKey)
     local chars = cmd['characterString']
-    if chars and chars ~= "" and whichKey == shortcut.textToKeyCode(chars) and tools.modifierMatch(whichModifier, cmd['modifiers']) then
+    if chars and chars ~= "" and whichKey == shortcut.textToKeyCode(chars) and commandeditor.modifierMatch(whichModifier, cmd['modifiers']) then
         --------------------------------------------------------------------------------
         -- Perform the keystroke:
         --------------------------------------------------------------------------------
@@ -218,12 +176,12 @@ function mod.checkCommand(whichModifier, whichKey)
     --------------------------------------------------------------------------------
     -- Only Continue if in Full Screen Playback Mode:
     --------------------------------------------------------------------------------
-    if fcp:fullScreenWindow():isShowing() then
+    if fcp.fullScreenPlayer:isShowing() then
 
         --------------------------------------------------------------------------------
         -- Get Active Command Set:
         --------------------------------------------------------------------------------
-        local activeCommandSet = fcp:getActiveCommandSet()
+        local activeCommandSet = fcp:activeCommandSet()
         if type(activeCommandSet) ~= "table" then
             --log.df("Failed to get Active Command Set. Error occurred in plugins.fullscreen.shortcuts.checkCommand().")
             return
@@ -261,23 +219,19 @@ function mod.checkCommand(whichModifier, whichKey)
     end
 end
 
---------------------------------------------------------------------------------
---
--- THE PLUGIN:
---
---------------------------------------------------------------------------------
 local plugin = {
     id              = "finalcutpro.fullscreen.shortcuts",
     group           = "finalcutpro",
     dependencies    = {
-        ["finalcutpro.preferences.app"] = "prefs",
+        ["finalcutpro.preferences.manager"] = "prefs",
     }
 }
 
---------------------------------------------------------------------------------
--- INITIALISE PLUGIN:
---------------------------------------------------------------------------------
 function plugin.init(deps)
+    --------------------------------------------------------------------------------
+    -- Only load plugin if FCPX is supported:
+    --------------------------------------------------------------------------------
+    if not fcp:isSupported() then return end
 
     --------------------------------------------------------------------------------
     -- Setup Menubar Preferences Panel:
@@ -287,7 +241,7 @@ function plugin.init(deps)
             --------------------------------------------------------------------------------
             -- Add Preferences Checkbox:
             --------------------------------------------------------------------------------
-            :addCheckbox(1.2,
+            :addCheckbox(1.01,
             {
                 label = i18n("enableShortcutsDuringFullscreen"),
                 onchange = function(_, params) mod.enabled(params.checked) end,
@@ -299,11 +253,18 @@ function plugin.init(deps)
     return mod
 end
 
---------------------------------------------------------------------------------
--- POST INITIALISE PLUGIN:
---------------------------------------------------------------------------------
 function plugin.postInit()
-    mod.enabled:update()
+    --------------------------------------------------------------------------------
+    -- Only load plugin if FCPX is supported:
+    --------------------------------------------------------------------------------
+    if not fcp:isSupported() then return end
+
+    --------------------------------------------------------------------------------
+    -- Check to see if we started in fullscreen mode:
+    --------------------------------------------------------------------------------
+    if mod.enabled then
+        mod.enabled:update()
+    end
 end
 
 return plugin

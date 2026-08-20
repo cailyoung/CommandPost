@@ -1,0 +1,526 @@
+--- === cp.apple.finalcutpro.inspector.InspectorProperty ===
+---
+--- `InspectorProperty` contains helper functions for handling common property
+--- types that occur in various `Inspectors` in FCP.
+---
+--- In addition to specific property row types like `textField`, `slider`, etc.,
+--- there is also a `section`, which is for rows which expand/collapse to reveal
+--- other properties.
+
+local require                   = require
+
+--local log                       = require "hs.logger".new "InspectorProperty"
+
+local is                        = require "cp.is"
+local prop                      = require "cp.prop"
+local tools                     = require "cp.tools"
+
+local axutils                   = require "cp.ui.axutils"
+local Button                    = require "cp.ui.Button"
+local CheckBox                  = require "cp.ui.CheckBox"
+local MenuButton                = require "cp.ui.MenuButton"
+local PopUpButton               = require "cp.ui.PopUpButton"
+local PropertyRow               = require "cp.ui.PropertyRow"
+local StaticText                = require "cp.ui.StaticText"
+local TextField                 = require "cp.ui.TextField"
+
+local Do                        = require "cp.rx.go.Do"
+
+local childFromLeft             = axutils.childFromLeft
+local childFromRight            = axutils.childFromRight
+local childrenMatching          = axutils.childrenMatching
+
+local toRegionalNumber          = tools.toRegionalNumber
+local toRegionalNumberString    = tools.toRegionalNumberString
+
+local mod = {}
+
+--- cp.apple.finalcutpro.inspector.InspectorProperty.hasProperties(parent, uiFinder) -> boolean
+--- Function
+--- This will prepare the `parent` to handle containing `PropertyRow` children, and returns a function which can pass in a table of properties to bind to the parent.
+---
+--- Parameters:
+---  * parent    - The parent table.
+---  * uiFinder  - The function or cp.prop which will be called to find the parent UI element. Functions will be passed the `parent` when being executed.
+---
+--- Returns:
+---  * boolean
+---
+--- Notes:
+---  * For example:
+---
+--- ```lua
+--- local o = {
+---     propertiesUI = ...,
+--- }
+--- InspectorProperty.hasProperties(o, o.propertiesUI) {
+---     propOne     = InspectorProperty.textField "FFPropOne",
+---     sectionOne  = InspectorProperty.section "FFSectionOne" {
+---         sliderOne   = InspectorProperty.slider "FFSliderOne",
+---     },
+--- }
+--- ```
+function mod.hasProperties(parent, uiFinder)
+    PropertyRow.prepareParent(parent, uiFinder)
+    return function(props)
+        prop.bind(parent)(props)
+    end
+end
+
+local function propShow(self)
+    local parent = self:parent()
+    parent:show()
+    self.section:expanded(true)
+    return self
+end
+
+local function propHide(self)
+    self.section:expanded(false)
+    return self
+end
+
+local function propDoShow(self)
+    return Do(self:parent():doShow())
+    :Then(function()
+        self.section:expanded(true)
+    end)
+    :ThenYield()
+    :Label("cp.apple.finalcutpro.inspector.PropertyRow:doShow()")
+end
+
+local function propDoHide(self)
+    return Do(function()
+        self.section:expanded(false)
+    end)
+    :ThenYield()
+    :Label("cp.apple.finalcutpro.inspector.PropertyRow:doHide()")
+end
+
+--- cp.apple.finalcutpro.inspector.InspectorProperty.section(labelKey[, index]) -> function
+--- Function
+--- Returns a 'section row' factory function that can be called to create a section row that contains other `PropertyRow' `cp.prop`s.
+---
+--- Parameters:
+---  * labelKey      - The I18N lookup key to find the row with.
+---  * index         - (optional) The occurrence of the key value in the parent. Sometimes multiple rows have the same title. Defaults to `1`.
+---
+--- Returns:
+---  * A function which will create the section row when called.
+---
+--- Notes:
+---  * This does *not* return an actual `cp.prop`. Rather, it returns a 'factory' function that will help configure the sub-properties of of the section. This can be used as follows:
+---
+--- ```lua
+--- local o = {}
+--- prop.bind(o) {
+---   sectionOne         = InspectorProperty.section "FFHeaderOneKey" {     -- has sub-properties inside the `{}`
+---     subRowOne       = InspectorProperty.textField "FFSubRowOneKey",
+---     subRowTwo       = InspectorProperty.slider "FFSubRowTwoKey",
+---   },
+---   sectionTwo         = InspectorProperty.section "FFHeaderTwoKey" {}    -- no sub-properties, still needs `{}`
+--- }
+---
+--- -- access subRowOne
+--- local value = o:sectionOne():subRowOne()
+--- ```
+---
+---  * The `o.sectionOne` property will be a `cp.prop` with the following built-in additional properties:
+---   ** `enabled`     - a `cp.ui.CheckBox` which reports if the section row is enabled.
+---   ** `toggle`      - a `cp.ui.Button` which will toggle the show/hide button (if present)
+---   ** `reset`       - a `cp.ui.Button` which will reset the sub-property values, if present in the UI.
+---   ** `expanded`    - a `cp.prop` which reports if the section is currently expanded.
+function mod.section(labelKey, index)
+    return function(subProps)
+        local extendFn = nil
+        local result = prop(function(owner)
+            local row = PropertyRow(owner, labelKey, index)
+            -- sections are also parents of other PropertyRows.
+            PropertyRow.prepareParent(row, row.propertiesUI:mutate(function(original)
+                local propsUI = original()
+                local rowUI = row:UI()
+                if propsUI and rowUI then
+                    local frame = rowUI:attributeValue("AXFrame")
+                    if frame then
+                        local rowPos = frame.y + frame.h
+                        return childrenMatching(propsUI, function(child)
+                            local childFrame = child:attributeValue("AXFrame")
+                            return childFrame ~= nil and childFrame.y >= rowPos - PropertyRow.intersectBuffer
+                        end)
+                    end
+                end
+                return nil
+            end))
+
+            row.enabled     = CheckBox(row, function() return childFromLeft(row:children(), 1, CheckBox.matches) end)
+            row.toggle      = CheckBox(row, function() return childFromLeft(row:children(), 3, CheckBox.matches) end)
+            row.reset       = Button(row, function() return childFromRight(row:children(), 1, Button.matches) end)
+            row.expanded    = prop(
+                function(theRow)
+
+                    --------------------------------------------------------------------------------
+                    -- NOTE: The below works, but is completely impractical.
+                    --------------------------------------------------------------------------------
+
+                    --[[
+                    local result = false
+                    local resetButton = theRow.reset
+                    local resetButtonUI = resetButton and resetButton:UI()
+                    local resetButtonFrame = resetButtonUI and resetButtonUI:attributeValue("AXFrame")
+                    if resetButtonFrame then
+                        resetButtonFrame.x = resetButtonFrame.x - resetButtonFrame.w
+                        local center = geometry(resetButtonFrame).center
+                        tools.ninjaMouseAction(center, function()
+                            wait(0.1)
+                            local element = ax.systemElementAtPosition(mouse.absolutePosition())
+                            if element and element:attributeValue("AXRole") == "AXCheckBox" then
+                                local iHide = theRow:app():string("FFInspectorHeaderControllerButtonHide")
+                                result = element:title() == iHide
+                            end
+                        end)
+                    end
+                    return result
+                    --]]
+
+                    --------------------------------------------------------------------------------
+                    -- NOTE: The below works for main rows (i.e. "3D Text"),
+                    --       but not sub-rows (i.e. "Self Shadows").
+                    --------------------------------------------------------------------------------
+
+                    --[[
+                    local theRowUI = theRow and theRow:UI()
+                    local theRowFrame = theRowUI and theRowUI:attributeValue("AXFrame")
+
+                    local nextRow = axutils.childrenInNextLine(theRowUI)
+                    local nextRowStaticText = nextRow and axutils.childFromLeft(nextRow, 1, StaticText.matches)
+                    local nextRowStaticTextFrame = nextRowStaticText and nextRowStaticText:attributeValue("AXFrame")
+
+                    if theRowFrame and nextRowStaticTextFrame and (theRowFrame.y + theRowFrame.h) > (nextRowStaticTextFrame.y - 5) then
+                        return true
+                    else
+                        return false
+                    end
+                    --]]
+
+                    local iHide = theRow:app():string("FFInspectorHeaderControllerButtonHide")
+                    local toggleUI = theRow.toggle:UI()
+                    return toggleUI and toggleUI:attributeValue("AXTitle") == iHide
+                end,
+                function(newValue, theRow, theProp)
+
+                    local currentValue = theProp:get()
+
+                    --------------------------------------------------------------------------------
+                    -- NOTE: The below works, but is completely impractical until we have a
+                    --       solution for "getting".
+                    --------------------------------------------------------------------------------
+
+                    --[[
+                    local resetButton = theRow.reset
+                    local resetButtonUI = resetButton and resetButton:UI()
+                    local resetButtonFrame = resetButtonUI and resetButtonUI:attributeValue("AXFrame")
+
+                    if resetButtonFrame and newValue ~= currentValue then
+                        resetButtonFrame.x = resetButtonFrame.x - resetButtonFrame.w
+                        local center = geometry(resetButtonFrame).center
+                        ninjaMouseClick(center)
+                    end
+                    --]]
+
+                    if newValue ~= currentValue then
+                        theRow.toggle:press()
+                    end
+                end
+            ):bind(row)
+
+            if subProps then
+                prop.bind(row)(subProps)
+                -- hijack the 'show/hide' functions
+                for _,p in pairs(subProps) do
+                    local subRow = p()
+                    subRow.section = row
+                    subRow.show = propShow
+                    subRow.hide = propHide
+                    subRow.doShow = propDoShow
+                    subRow.doHide = propDoHide
+                end
+            end
+
+            if extendFn then
+                row:extend(extendFn)
+            end
+
+            return row
+        end):cached()
+
+        -- add access to the `PropertyRow:extend()` function
+        function result:extend(fn)
+            extendFn = fn
+            if self:owner() then -- already bound...
+                self:get():extend(extendFn)
+            end
+            return self
+        end
+
+        return result
+    end
+end
+
+--- cp.apple.finalcutpro.inspector.InspectorProperty.simple(labelKey[, prepareFn][, index]]) -> cp.prop <cp.ui.PropertyRow; read-only>
+--- Function
+--- Creates a new `cp.prop` that contains a `PropertyRow`  matching the `labelKey`.
+---
+--- Parameters:
+---  * labelKey      - The I18N key that the row lable matches.
+---  * prepareFn     - The function to call to perform additional preparations on the row.
+---  * index         - The instance number of that label (defaults to `1`).
+---
+--- Returns:
+---  * The `cp.prop` that returns the `PropertyRow`.
+---
+--- Notes:
+---  * It has no additional properties, but it does allow a `prepareFn` to be provided, which will be called after the `PropertyRow` is created, and passed the new `PropertyRow` as the first argument.
+local function simple(labelKey, prepareFn, index)
+    if is.number(prepareFn) then
+        index = prepareFn
+        prepareFn = nil
+    end
+
+    local extendFn = nil
+    local result = prop(function(owner)
+        local row = PropertyRow(owner, labelKey, index)
+
+        row.reset       = Button(row, function() return childFromRight(row:children(), 1) end)
+
+        row.keyframe    = Button(row, function() return childFromRight(row:children(), 2, Button.matches) end)
+
+        function row.keyframe:addKeyframe()
+            local ui = self:UI()
+            if ui then
+                local f = ui:attributeValue("AXFrame")
+                if f then
+                    local point = {
+                        x = f.x + f.w - 5,
+                        y = f.y + (f.h / 2)
+                    }
+                    tools.ninjaMouseClick(point)
+                end
+            end
+        end
+
+        if prepareFn then
+            prepareFn(row)
+        end
+
+        if extendFn then
+            row:extend(extendFn)
+        end
+
+        return row
+    end):cached()
+
+    -- add access to the `PropertyRow:extend()` function
+    function result:extend(fn)
+        extendFn = fn
+        if self:owner() then -- already bound...
+            self:get():extend(extendFn)
+        end
+        return self
+    end
+
+    return result
+end
+
+mod.simple = simple
+
+--- cp.apple.finalcutpro.inspector.InspectorProperty.textField(labelKey[, index]) -> cp.prop <cp.ui.PropertyRow; read-only>
+--- Function
+--- Creates a new `cp.prop` that contains a `PropertyRow`  matching the `labelKey`.
+---
+--- Parameters:
+---  * labelKey      - The I18N key that the row lable matches.
+---  * index         - The instance number of that label (defaults to `1`).
+---
+--- Returns:
+---  * The `cp.prop` that returns the `PropertyRow`.
+---
+--- Notes:
+---  * It has one additional property:
+---   ** `value`   - A `cp.ui.TextField` which contains the text value.
+function mod.textField(labelKey, index)
+    return simple(labelKey, function(row)
+        row.value = TextField(row, function() return childFromRight(row:children(), 1, TextField.matches) end)
+    end, index)
+end
+
+--- cp.apple.finalcutpro.inspector.InspectorProperty.numberField(labelKey[, index]) -> cp.prop <cp.ui.PropertyRow; read-only>
+--- Function
+--- Creates a new `cp.prop` that contains a `PropertyRow`  matching the `labelKey`.
+---
+--- Parameters:
+---  * labelKey      - The I18N key that the row lable matches.
+---  * index         - The instance number of that label (defaults to `1`).
+---
+--- Returns:
+---  * The `cp.prop` that returns the `PropertyRow`.
+---
+--- Notes:
+---  * It has one additional property:
+---   ** `value`   - A `cp.ui.TextField` which contains the number value.
+function mod.numberField(labelKey, index)
+    return simple(labelKey, function(row)
+        row.value = TextField(row, function() return childFromRight(row:children(), 1, TextField.matches) end, toRegionalNumber, toRegionalNumberString)
+    end, index)
+end
+
+--- cp.apple.finalcutpro.inspector.InspectorProperty.staticText(labelKey[, index]) -> cp.prop <cp.ui.PropertyRow; read-only>
+--- Function
+--- Creates a new `cp.prop` that contains a `PropertyRow`  matching the `labelKey`.
+---
+--- Parameters:
+---  * labelKey      - The I18N key that the row lable matches.
+---  * index         - The instance number of that label (defaults to `1`).
+---
+--- Returns:
+---  * The `cp.prop` that returns the `PropertyRow`.
+---
+--- Notes:
+---  * It has one additional property:
+---   ** `value`   - A `cp.ui.StaticText` which contains the text value.
+function mod.staticText(labelKey, index)
+    return simple(labelKey, function(row)
+        row.value = StaticText(row, function() return childFromRight(row:children(), 1, StaticText.matches) end)
+    end, index)
+end
+
+--- cp.apple.finalcutpro.inspector.InspectorProperty.xy(labelKey[, index]) -> cp.prop <cp.ui.PropertyRow; read-only>
+--- Function
+--- Creates a new `cp.prop` that contains a `PropertyRow`  matching the `labelKey`.
+---
+--- Parameters:
+---  * labelKey      - The I18N key that the row lable matches.
+---  * index         - The instance number of that label (defaults to `1`).
+---
+--- Returns:
+---  * The `cp.prop` that returns the `PropertyRow`.
+---
+--- Notes:
+---  * It has two additional properties:
+---   ** `x`   - A `cp.ui.TextField` containing the 'X' value.
+---   ** `y`   - A `cp.ui.TextField` containing the `Y` value.
+function mod.xy(labelKey, index)
+    return mod.simple(labelKey, function(row)
+        row.x = TextField(row, function() return childFromLeft(row:children(), 1, TextField.matches) end, toRegionalNumber, toRegionalNumberString)
+        row.y = TextField(row, function() return childFromLeft(row:children(), 2, TextField.matches) end, toRegionalNumber, toRegionalNumberString)
+    end, index)
+end
+
+--- cp.apple.finalcutpro.inspector.InspectorProperty.slider(labelKey[, index]) -> cp.prop <cp.ui.PropertyRow; read-only>
+--- Function
+--- Creates a new `cp.prop` that contains a `PropertyRow`  matching the `labelKey`.
+---
+--- Parameters:
+---  * labelKey      - The I18N key that the row lable matches.
+---  * index         - The instance number of that label (defaults to `1`).
+---
+--- Returns:
+---  * The `cp.prop` that returns the `PropertyRow`.
+---
+--- Notes:
+---  * It has one additional property:
+---   ** `value`   - A `cp.ui.TextField` which contains the value of the slider.
+function mod.slider(labelKey, index)
+    return mod.simple(labelKey, function(row)
+        row.value = TextField(row, function() return childFromRight(row:children(), 1, TextField.matches) end, toRegionalNumber, toRegionalNumberString)
+    end, index)
+end
+
+--- cp.apple.finalcutpro.inspector.InspectorProperty.menuButton(labelKey[, index]) -> cp.prop <cp.ui.PropertyRow; read-only>
+--- Function
+--- Creates a new `cp.prop` that contains a `PropertyRow`  matching the `labelKey`.
+---
+--- Parameters:
+---  * labelKey      - The I18N key that the row lable matches.
+---  * index         - The instance number of that label (defaults to `1`).
+---
+--- Returns:
+---  * The `cp.prop` that returns the `PropertyRow`.
+---
+--- Notes:
+---  * It has one additional property:
+---   ** `value`   - A `cp.ui.MenuButton` which contains the text value.
+function mod.menuButton(labelKey, index)
+    return mod.simple(labelKey, function(row)
+        row.value = MenuButton(row, function() return childFromRight(row:children(), 1, MenuButton.matches) end)
+    end, index)
+end
+
+--- cp.apple.finalcutpro.inspector.InspectorProperty.button(labelKey[, index]) -> cp.prop <cp.ui.PropertyRow; read-only>
+--- Function
+--- Creates a new `cp.prop` that contains a `PropertyRow` matching the `labelKey`.
+---
+--- Parameters:
+---  * labelKey      - The I18N key that the row lable matches.
+---  * index         - The instance number of that label (defaults to `1`).
+---
+--- Returns:
+---  * The `cp.prop` that returns the `PropertyRow`.
+---
+--- Notes:
+---  * It has one additional property:
+---   ** `button`   - A `cp.ui.Button`.
+function mod.button(labelKey, index)
+    return mod.simple(labelKey, function(row)
+        row.button = Button(row, function() return childFromRight(row:children(), 1, Button.matches) end)
+    end, index)
+end
+
+--- cp.apple.finalcutpro.inspector.InspectorProperty.popUpButton(labelKey[, index]) -> cp.prop <cp.ui.PropertyRow; read-only>
+--- Function
+--- Creates a new `cp.prop` that contains a `PropertyRow`  matching the `labelKey`.
+---
+--- Parameters:
+---  * labelKey      - The I18N key that the row lable matches.
+---  * index         - The instance number of that label (defaults to `1`).
+---
+--- Returns:
+---  * The `cp.prop` that returns the `PropertyRow`.
+---
+--- Notes:
+---  * It has one additional property:
+---   ** `value`   - A `cp.ui.PopUpButton` which contains the text value.
+function mod.popUpButton(labelKey, index)
+    return mod.simple(labelKey, function(row)
+        row.value = PopUpButton(row, function() return childFromRight(row:children(), 1, PopUpButton.matches) end)
+
+        function row:doSelectValue(value, overrideValue)
+            return Do(self:doShow())
+            :Then(self.value:doSelectValue(value, overrideValue))
+        end
+        -- returns the PopUpButton.value prop as the observable
+        function row:toObservable()
+            return self.value.value:toObservable()
+        end
+    end, index)
+end
+
+--- cp.apple.finalcutpro.inspector.InspectorProperty.checkBox(labelKey[, index]) -> cp.prop <cp.ui.PropertyRow; read-only>
+--- Function
+--- Creates a new `cp.prop` that contains a `PropertyRow`  matching the `labelKey`.
+---
+--- Parameters:
+---  * labelKey      - The I18N key that the row lable matches.
+---  * index         - The instance number of that label (defaults to `1`).
+---
+--- Returns:
+---  * The `cp.prop` that returns the `PropertyRow`.
+---
+--- Notes:
+---  * It has one additional property:
+---   ** `value`   - A `cp.ui.CheckBox` which contains the boolean value for the row.
+function mod.checkBox(labelKey, index)
+    return mod.simple(labelKey, function(row)
+        row.value = CheckBox(row, function() return childFromLeft(row:children(), 1, CheckBox.matches) end)
+    end, index)
+end
+
+return mod

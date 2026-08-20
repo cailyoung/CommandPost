@@ -1,66 +1,28 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---                     P R E F E R E N C E S   M A N A G E R                  --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === plugins.core.preferences.manager.panel ===
 ---
 --- CommandPost Preferences Panel.
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
+local require = require
 
---------------------------------------------------------------------------------
--- Logger:
---------------------------------------------------------------------------------
---local log                                       = require("hs.logger").new("prefPanel")
+local host    = require "hs.host"
 
---------------------------------------------------------------------------------
--- Hammerspoon Extensions:
---------------------------------------------------------------------------------
-local uuid                                      = require("hs.host").uuid
+local html    = require "cp.web.html"
+local ui      = require "cp.web.ui"
 
---------------------------------------------------------------------------------
--- CommandPost Extensions:
---------------------------------------------------------------------------------
-local html                                      = require("cp.web.html")
-local ui                                        = require("cp.web.ui")
+local uuid    = host.uuid
 
---------------------------------------------------------------------------------
---
--- CONSTANTS:
---
---------------------------------------------------------------------------------
-
---- plugins.core.preferences.manager.panel.DEFAULT_PRIORITY -> number
---- Constant
---- The default priority for panels.
-local DEFAULT_PRIORITY = 0
-
---- plugins.core.preferences.manager.panel.HANDLER_PRIORITY -> number
---- Constant
---- The default priority for handler scripts.
-local HANDLER_PRIORITY = 1000000
-
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
 local panel = {}
 
---- plugins.core.preferences.manager.panel.new(priority, id) -> cp.core.preferences.manager.panel
+--- plugins.core.preferences.manager.panel.new(params, manager) -> cp.core.preferences.manager.panel
 --- Constructor
 --- Constructs a new panel with the specified priority and ID.
 ---
 --- Parameters:
---- * priority  - Defines the order in which the panel appears.
---- * id        - The unique ID for the panel.
---- * webview   - The webview the panel is attached to.
+---  * params - Table of parameters
+---  * manager - The manager
+---
+--- Returns:
+---  * A `cp.core.preferences.manager.panel` object
 function panel.new(params, manager)
     local o = {
         id          =   params.id,
@@ -142,25 +104,25 @@ local function getClass(params)
     return class
 end
 
---- plugins.core.preferences.manager.panel:addContent(priority, content, unescaped) -> panel
+--- plugins.core.preferences.manager.panel:addContent(priority, content[, escaped]) -> panel
 --- Method
 --- Adds the specified `content` to the panel, with the specified `priority` order.
 ---
 --- Parameters:
---- * `priority`        - the priority order of the content.
---- * `content`         - a value that can be converted to a string.
---- * `unescaped`       - if `true`, the content will not be escaped. Defaults to `false`.
+---  * `priority`        - the priority order of the content.
+---  * `content`         - a value that can be converted to a string.
+---  * `escaped`         - if `true`, the content will be escaped.
 ---
 --- Returns:
---- * The panel.
-function panel:addContent(priority, content, unescaped)
+---  * The panel.
+function panel:addContent(priority, content, escaped)
     -- log.df("addContent to '%s': %s", self.id, hs.inspect(content))
-    priority = priority or DEFAULT_PRIORITY
+    priority = priority or 0
 
     local items = self._uiItems
     items[#items+1] = {
         priority = priority,
-        html = html(content, unescaped),
+        html = html(content, escaped),
     }
     return self
 end
@@ -210,7 +172,7 @@ function panel:addHandler(event, id, handlerFn, keys)
     --------------------------------------------------------------------------------
     -- Add the script to the panel:
     --------------------------------------------------------------------------------
-    self:addContent(HANDLER_PRIORITY, script)
+    self:addContent(1000000, script)
 
     --------------------------------------------------------------------------------
     -- Register the handler function:
@@ -218,19 +180,19 @@ function panel:addHandler(event, id, handlerFn, keys)
     self.manager.addHandler(id, handlerFn)
 end
 
---- plugins.core.preferences.manager.panel:addParagraph(content, unescaped, class) -> panel
+--- plugins.core.preferences.manager.panel:addParagraph(content[, escaped[, class]]) -> panel
 --- Method
 --- Adds a Paragraph to the panel
 ---
 --- Parameters:
 ---  * content - The content as a string
----  * unescaped - Whether or not the HTML should be escaped as a boolean
+---  * escaped - Whether or not the HTML should be escaped as a boolean. Defaults to `true` for simple text.
 ---  * class - The class as a string
 ---
 --- Returns:
---- * The panel object.
-function panel:addParagraph(priority, content, unescaped, class)
-    return self:addContent(priority, html.p { class=getClass({class=class}) } (content, unescaped))
+---  * The panel object.
+function panel:addParagraph(priority, content, escaped, class)
+    return self:addContent(priority, html.p { class=getClass({class=class}) } (content, escaped))
 end
 
 --- plugins.core.preferences.manager.panel:addCheckbox(priority, params) -> panel
@@ -243,6 +205,7 @@ end
 ---
 --- Returns:
 ---  * The panel.
+---
 --- Notes:
 ---  * The `params` can contain the following fields:
 ---  ** `id`         - (optional) The unique ID. If none is provided, one will be generated.
@@ -279,7 +242,7 @@ end
 ---  * text - The text of the heading as a string
 ---
 --- Returns:
---- * The panel object.
+---  * The panel object.
 function panel:addHeading(priority, text, level)
     return self:addContent(priority, ui.heading({text=text, level=level, class="uiItem"}))
 end
@@ -292,7 +255,7 @@ end
 ---  * params - A table of parameters
 ---
 --- Returns:
---- * The panel object.
+---  * The panel object.
 function panel:addTextbox(priority, params)
     params.id = params.id or uuid()
 
@@ -319,7 +282,7 @@ end
 ---  * params - A table of parameters
 ---
 --- Returns:
---- * The panel object.
+---  * The panel object.
 function panel:addPassword(priority, params)
     params.id = params.id or uuid()
 
@@ -367,15 +330,16 @@ function panel:addButton(priority, params)
     return self:addContent( priority, content )
 end
 
---- plugins.core.preferences.manager.panel:addSelect(params) -> panel
+--- plugins.core.preferences.manager.panel:addSelect(priority, params) -> panel
 --- Method
 --- Adds a select to the panel.
 ---
 --- Parameters:
+---  * priority - Priority of the item as number.
 ---  * params - A table of parameters
 ---
 --- Returns:
---- * The panel object.
+---  * The panel object.
 function panel:addSelect(priority, params)
 
     --------------------------------------------------------------------------------
@@ -386,9 +350,13 @@ function panel:addSelect(priority, params)
     --------------------------------------------------------------------------------
     -- Create the select:
     --------------------------------------------------------------------------------
-    local select = html.p { class=getClass(params) } (
-        html(params.label) .. ": " .. ui.select(params)
-    )
+    local result
+    if params.label then
+        result = html(params.label) .. ": " .. ui.select(params)
+    else
+       result = ui.select(params)
+    end
+    local select = html.p { class=getClass(params) } (result)
 
     if params.onchange then
         self:addHandler("onchange", params.id, params.onchange, { "value" })

@@ -1,29 +1,19 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---                   C  O  M  M  A  N  D  P  O  S  T                          --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === plugins.finalcutpro.timeline.playback ===
 ---
 --- Playback Plugin.
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
+local require                       = require
 
---------------------------------------------------------------------------------
--- CommandPost Extensions:
---------------------------------------------------------------------------------
-local fcp							= require("cp.apple.finalcutpro")
+local eventtap                      = require "hs.eventtap"
 
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
+local fcp                           = require "cp.apple.finalcutpro"
+local i18n                          = require "cp.i18n"
+local tools                         = require "cp.tools"
+
+local playErrorSound                = tools.playErrorSound
+
+local checkKeyboardModifiers        = eventtap.checkKeyboardModifiers
+
 local mod = {}
 
 --- plugins.finalcutpro.timeline.playback.play() -> none
@@ -36,7 +26,11 @@ local mod = {}
 --- Returns:
 ---  * None
 function mod.play()
-	fcp:performShortcut("PlayPause")
+    if not fcp.viewer:isPlaying() and not fcp.eventViewer:isPlaying() then
+        fcp:doShortcut("PlayPause"):Now()
+    else
+        playErrorSound()
+    end
 end
 
 --- plugins.finalcutpro.timeline.playback.pause() -> none
@@ -49,40 +43,76 @@ end
 --- Returns:
 ---  * None
 function mod.pause()
-	mod.play()
+    if fcp.viewer:isPlaying() or fcp.eventViewer:isPlaying() then
+        fcp:doShortcut("PlayPause"):Now()
+    else
+        playErrorSound()
+    end
 end
 
---------------------------------------------------------------------------------
---
--- THE PLUGIN:
---
---------------------------------------------------------------------------------
 local plugin = {
-	id = "finalcutpro.timeline.playback",
-	group = "finalcutpro",
-	dependencies = {
-		["finalcutpro.commands"]	= "fcpxCmds",
-	}
+    id = "finalcutpro.timeline.playback",
+    group = "finalcutpro",
+    dependencies = {
+        ["finalcutpro.commands"] = "fcpxCmds",
+    }
 }
 
---------------------------------------------------------------------------------
--- INITIALISE PLUGIN:
---------------------------------------------------------------------------------
 function plugin.init(deps)
+    --------------------------------------------------------------------------------
+    -- Only load plugin if Final Cut Pro is supported:
+    --------------------------------------------------------------------------------
+    if not fcp:isSupported() then return end
+
+    local cmds = deps.fcpxCmds
 
     --------------------------------------------------------------------------------
-    -- Setup Commands:
+    -- Play:
     --------------------------------------------------------------------------------
-    if deps.fcpxCmds then
-        local cmds = deps.fcpxCmds
-        cmds:add("cpPlay")
-            :whenActivated(mod.play)
+    cmds
+        :add("cpPlay")
+        :subtitled(i18n("thisWillOnlyTriggerThePlayShortcutKeyIfAlreadyStopped"))
+        :whenActivated(mod.play)
 
-        cmds:add("cpPause")
-            :whenActivated(mod.pause)
-    end
+    --------------------------------------------------------------------------------
+    -- Pause:
+    --------------------------------------------------------------------------------
+    cmds
+        :add("cpPause")
+        :subtitled(i18n("thisWillOnlyTriggerThePauseShortcutKeyIfAlreadyPlaying"))
+        :whenActivated(mod.pause)
 
-	return mod
+    --------------------------------------------------------------------------------
+    -- Jump to Next Frame:
+    --------------------------------------------------------------------------------
+    cmds
+        :add("jumpToNextFrame")
+        :whenActivated(function()
+            if checkKeyboardModifiers()["shift"] then
+               fcp:doShortcut("JumpForward10Frames"):Now()
+            else
+                fcp:doShortcut("JumpToNextFrame"):Now()
+            end
+        end)
+        :titled(i18n("jumpToNextFrame"))
+        :subtitled(i18n("jumpToFrameShiftExplanation"))
+
+    --------------------------------------------------------------------------------
+    -- Jump to Previous Frame:
+    --------------------------------------------------------------------------------
+    cmds
+        :add("jumpToPreviousFrame")
+        :whenActivated(function()
+            if checkKeyboardModifiers()["shift"] then
+               fcp:doShortcut("JumpBackward10Frames"):Now()
+            else
+                fcp:doShortcut("JumpToPreviousFrame"):Now()
+            end
+        end)
+        :titled(i18n("jumpToPreviousFrame"))
+        :subtitled(i18n("jumpToFrameShiftExplanation"))
+
+
 end
 
 return plugin

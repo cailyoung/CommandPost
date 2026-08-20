@@ -1,89 +1,43 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---                   C  O  M  M  A  N  D  P  O  S  T                          --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === cp ===
 ---
---- Core CommandPost functionality
+--- Core CommandPost functionality.
+
+local startTime             = os.clock()
+
+local require               = require
+local hs                    = _G.hs
+
+local logger                = require "hs.logger"
+logger.defaultLogLevel      = "verbose"
+
+local application           = require "hs.application"
+local console               = require "hs.console"
+local image                 = require "hs.image"
+local keycodes              = require "hs.keycodes"
+local settings              = require "hs.settings"
+local styledtext            = require "hs.styledtext"
+local toolbar               = require "hs.webview.toolbar"
+local window                = require "hs.window"
+
+local config                = require "cp.config"
+local fcp                   = require "cp.apple.finalcutpro"
+local i18n                  = require "cp.i18n"
+local plugins               = require "cp.plugins"
+local tools                 = require "cp.tools"
+
+local imageFromName         = image.imageFromName
+local imageFromPath         = image.imageFromPath
 
 --------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
+-- Not used in `init.lua`, but is required to "jump start" the CLI support:
 --------------------------------------------------------------------------------
+require("hs.ipc")
 
 --------------------------------------------------------------------------------
--- Logger:
+-- Set the accessibility API timeout to one second:
 --------------------------------------------------------------------------------
-local logger                    = require("hs.logger"); logger.defaultLogLevel = 'debug'
-local log                       = logger.new("cp")
+window.timeout(1)
 
---------------------------------------------------------------------------------
--- Display startup screen:
---------------------------------------------------------------------------------
-local alert                     = require("hs.alert")
-local config                    = require("cp.config")
-local alertUUID
-if not config.get("hasRunOnce", false) then
-    hs.dockIcon(true)
-    alertUUID = alert.show("Please wait while CommandPost scans your system for plugins...")
-end
-
---------------------------------------------------------------------------------
--- Hammerspoon Extensions:
---------------------------------------------------------------------------------
-local application               = require("hs.application")
-local console                   = require("hs.console")
-local fs                        = require("hs.fs")
-local host                      = require("hs.host")
-local image                     = require("hs.image")
-local ipc                       = require("hs.ipc")                         -- Not used in `init.lua`, but is required to "jump start" the CLI support
-local keycodes                  = require("hs.keycodes")
-local notify                    = require("hs.notify")
-local styledtext                = require("hs.styledtext")
-local toolbar                   = require("hs.webview.toolbar")
-
---------------------------------------------------------------------------------
--- CommandPost Extensions:
---------------------------------------------------------------------------------
-local plugins                   = require("cp.plugins")
-local tools                     = require("cp.tools")
-
---------------------------------------------------------------------------------
---
--- SETUP I18N LANGUAGES:
---
---------------------------------------------------------------------------------
-i18n = require("i18n")
-local languagePath = config.scriptPath .. "/cp/resources/languages/"
-for file in fs.dir(languagePath) do
-    if file:sub(-4) == ".lua" then
-        i18n.loadFile(languagePath .. file)
-    end
-end
-local userLocale = nil
-if config.get("language") == nil then
-    userLocale = host.locale.current()
-else
-    userLocale = config.get("language")
-end
-i18n.setLocale(userLocale)
-
---------------------------------------------------------------------------------
---
--- EXTENSIONS (THAT REQUIRE i18N):
---
---------------------------------------------------------------------------------
-local fcp                       = require("cp.apple.finalcutpro")
-local feedback                  = require("cp.feedback")
-
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
 local mod = {}
 
 --- cp.init()
@@ -98,58 +52,67 @@ local mod = {}
 function mod.init()
 
     --------------------------------------------------------------------------------
-    -- Disable Spotlight for Name Searches:
+    -- Setup Logger:
     --------------------------------------------------------------------------------
-    application.enableSpotlightForNameSearches(false)
+    local log = logger.new("cp")
+
+    --------------------------------------------------------------------------------
+    -- Show Dock Icon:
+    --------------------------------------------------------------------------------
+    if config.get("dockIcon", true) then
+        hs.dockIcon(true)
+    end
+
+    --------------------------------------------------------------------------------
+    -- Save Error Log History across sessions:
+    --------------------------------------------------------------------------------
+    hs._consoleHistory = require("cp.console.history")
+
+    --------------------------------------------------------------------------------
+    -- Enable Spotlight for Name Searches (used in Search Console):
+    --------------------------------------------------------------------------------
+    application.enableSpotlightForNameSearches(true)
+
+    --------------------------------------------------------------------------------
+    -- Disable Window Animations:
+    --------------------------------------------------------------------------------
+    window.animationDuration = 0
 
     --------------------------------------------------------------------------------
     -- Console Colour Scheme:
     --------------------------------------------------------------------------------
-    console.consoleCommandColor{hex = "#999999", alpha = 1}
-    console.outputBackgroundColor{hex = "#161616", alpha = 1}
-
-    --------------------------------------------------------------------------------
-    -- Debug Mode:
-    --------------------------------------------------------------------------------
-    local debugMode = config.developerMode()
-    if debugMode then
-        logger.defaultLogLevel = 'debug'
-        require("cp.developer")
-    else
-        --------------------------------------------------------------------------------
-        -- NOTE: For now, whilst we're in beta, it's probably better if our error
-        --       logs contain all the debug message we write to the console, so we can
-        --       refer to them if users submit feedback.
-        --------------------------------------------------------------------------------
-        --logger.defaultLogLevel = 'warning'
-    end
+    local grey = {hex = "#999999", alpha = 1}
+    console.consoleCommandColor(grey)
+    console.consolePrintColor(grey)
+    console.consoleResultColor(grey)
+    console.outputBackgroundColor({hex = "#161616", alpha = 1})
 
     --------------------------------------------------------------------------------
     -- Add Toolbar To Error Log:
     --------------------------------------------------------------------------------
     local function consoleOnTopIcon()
         if hs.consoleOnTop() then
-            return image.imageFromName("NSStatusAvailable")
+            return imageFromName("NSStatusAvailable")
         else
-            return image.imageFromName("NSStatusUnavailable")
+            return imageFromName("NSStatusUnavailable")
         end
     end
     local function autoReloadIcon()
         if config.automaticScriptReloading() then
-            return image.imageFromName("NSStatusAvailable")
+            return imageFromName("NSStatusAvailable")
         else
-            return image.imageFromName("NSStatusUnavailable")
+            return imageFromName("NSStatusUnavailable")
         end
     end
     console.toolbar(toolbar.new("myConsole", {
-            { id = i18n("reload"), image = image.imageFromName("NSSynchronize"),
+            { id = i18n("reload"), image = imageFromName("NSSynchronize"),
                 fn = function()
                     console.clearConsole()
                     print("Reloading CommandPost...")
                     hs.reload()
                 end
             },
-            { id = i18n("clearLog"), image = image.imageFromName("NSTrashFull"),
+            { id = i18n("clearLog"), image = imageFromName("NSTrashFull"),
                 fn = function()
                     console.clearConsole()
                 end
@@ -167,25 +130,31 @@ function mod.init()
                 end
             },
             { id = "NSToolbarFlexibleSpaceItem" },
-            { id = i18n("preferences"), image = image.imageFromName("NSPreferencesGeneral"),
+            { id = i18n("toolbox"), image = imageFromName("NSAdvanced"),
+                fn = function()
+                    plugins("core.toolbox.manager").show()
+                end
+            },
+            { id = i18n("controlSurfaces"), image = imageFromPath(config.bundledPluginsPath .. "/core/midi/prefs/images/AudioMIDISetup.icns"),
+                fn = function()
+                    plugins("core.controlsurfaces.manager").show()
+                end
+            },
+            { id = i18n("preferences"), image = imageFromName("NSPreferencesGeneral"),
                 fn = function()
                     plugins("core.preferences.manager").show()
                 end
             },
-            { id = i18n("feedback"), image = image.imageFromName("NSInfo"),
+            { id = i18n("feedback"), image = imageFromName("NSInfo"),
                 fn = function()
-                    feedback.showFeedback()
+                    os.execute('open "https://commandpost.fcp.cafe/support/"')
                 end
             },
         })
         :canCustomize(true)
         :autosaves(true)
+        :toolbarStyle("expanded")
     )
-
-    ---------------------------------------------------------------------------------
-    -- Kill any existing Notifications:
-    --------------------------------------------------------------------------------
-    notify.withdrawAll() -- TODO: Eventually we need to remove this. See: #844
 
     --------------------------------------------------------------------------------
     -- Open Error Log:
@@ -199,7 +168,7 @@ function mod.init()
     hs.shutdownCallback = function()
         local shutdownCallbacks = config.shutdownCallback:getAll()
         if shutdownCallbacks and type(shutdownCallbacks) == "table" then
-            for i, v in pairs(shutdownCallbacks) do
+            for _, v in pairs(shutdownCallbacks) do
                 local fn = v:callbackFn()
                 if fn and type(fn) == "function" then
                     fn()
@@ -214,7 +183,7 @@ function mod.init()
     hs.textDroppedToDockIconCallback = function(value)
         local textDroppedToDockIconCallbacks = config.textDroppedToDockIconCallback:getAll()
         if textDroppedToDockIconCallbacks and type(textDroppedToDockIconCallbacks) == "table" then
-            for i, v in pairs(textDroppedToDockIconCallbacks) do
+            for _, v in pairs(textDroppedToDockIconCallbacks) do
                 local fn = v:callbackFn()
                 if fn and type(fn) == "function" then
                     fn(value)
@@ -229,7 +198,7 @@ function mod.init()
     hs.fileDroppedToDockIconCallback = function(value)
         local fileDroppedToDockIconCallbacks = config.fileDroppedToDockIconCallback:getAll()
         if fileDroppedToDockIconCallbacks and type(fileDroppedToDockIconCallbacks) == "table" then
-            for i, v in pairs(fileDroppedToDockIconCallbacks) do
+            for _, v in pairs(fileDroppedToDockIconCallbacks) do
                 local fn = v:callbackFn()
                 if fn and type(fn) == "function" then
                     fn(value)
@@ -244,7 +213,7 @@ function mod.init()
     hs.dockIconClickCallback = function(value)
         local dockIconClickCallbacks = config.dockIconClickCallback:getAll()
         if dockIconClickCallbacks and type(dockIconClickCallbacks) == "table" then
-            for i, v in pairs(dockIconClickCallbacks) do
+            for _, v in pairs(dockIconClickCallbacks) do
                 local fn = v:callbackFn()
                 if fn and type(fn) == "function" then
                     fn(value)
@@ -272,17 +241,16 @@ function mod.init()
     --------------------------------------------------------------------------------
     if not config.get("hasRunOnce", false) then
         --------------------------------------------------------------------------------
-        -- Disabled plugins by default:
-        --------------------------------------------------------------------------------
-        config.set("plugins.disabled", {
-            ["core.webapp"] = true,
-            ["core.preferences.panels.webapp"] = true,
-        })
-
-        --------------------------------------------------------------------------------
         -- Enable Automatic Launch by default:
         --------------------------------------------------------------------------------
-        hs.autoLaunch(true)
+        if not hs.autoLaunch() then
+            hs.autoLaunch(true)
+        end
+
+        --------------------------------------------------------------------------------
+        -- Set Log Level to Verbose for Debugging:
+        --------------------------------------------------------------------------------
+        settings.set("hs.axuielement.logLevel", "verbose")
 
         --------------------------------------------------------------------------------
         -- Don't do this again unless you trash preferences:
@@ -293,10 +261,12 @@ function mod.init()
     --------------------------------------------------------------------------------
     -- Check Versions & Language:
     --------------------------------------------------------------------------------
-    local fcpVersion            = fcp:getVersion() or "Unknown"
-    local fcpPath               = fcp:getPath() or "Unknown"
+    local fcpVersion            = fcp:version() or "Not Installed"
+    local fcpPath               = fcp:getPath() or "Not Installed"
     local osVersion             = tools.macOSVersion() or "Unknown"
-    local fcpLanguage           = fcp:currentLanguage() or "Unknown"
+    local fcpLocale             = fcp:currentLocale()
+    local fcpLanguage           = fcp:version() and fcpLocale and fcpLocale.code or "Not Installed"
+    local debugMode             = config.developerMode()
 
     --------------------------------------------------------------------------------
     -- Clear The Console:
@@ -307,7 +277,7 @@ function mod.init()
     --------------------------------------------------------------------------------
     -- Display Welcome Message In The Console:
     --------------------------------------------------------------------------------
-    console.printStyledtext(styledtext.new(config.appName .. " v" .. config.appVersion, {
+    console.printStyledtext(styledtext.new(config.appName .. " v" .. config.appVersion .. " (Build: " .. config.appBuild .. ")", {
         color = {hex = "#999999", alpha = 1},
         font = { name = "Helvetica", size = 18 },
     }))
@@ -326,6 +296,7 @@ function mod.init()
     -- Display Useful Debugging Information in Console:
     --------------------------------------------------------------------------------
     console.printStyledtext("")
+                                                writeToConsoleDebug("Build Date:                     " .. hs.processInfo.buildTime)
     if osVersion ~= nil then                    writeToConsoleDebug("macOS Version:                  " .. tostring(osVersion),                   true) end
                                                 writeToConsoleDebug(config.appName .. " Locale:             " .. tostring(i18n.getLocale()),     true)
     if keycodes.currentLayout() ~= nil then     writeToConsoleDebug("Current Keyboard Layout:        " .. tostring(keycodes.currentLayout()),    true) end
@@ -353,25 +324,96 @@ function mod.init()
     log.df("Plugins Loaded.")
 
     --------------------------------------------------------------------------------
-    -- Close Welcome Alert:
+    -- Display how long it took to load CommandPost:
     --------------------------------------------------------------------------------
-    if alertUUID then
-        alert.closeSpecific(alertUUID)
-        hs.dockIcon(false)
+    local finishTime = os.clock()
+    local loadingTime = finishTime-startTime
+    log.df("Startup Time: %s seconds", loadingTime)
+
+    --------------------------------------------------------------------------------
+    -- Set Garbage Collection Mode:
+    --------------------------------------------------------------------------------
+    local garbageCollectionMode = "generational"
+
+    --------------------------------------------------------------------------------
+    -- Use Incremental Garbage Collection:
+    --
+    -- In incremental mode, each GC cycle performs a mark-and-sweep collection in
+    -- small steps interleaved with the program's execution. In this mode, the
+    -- collector uses three numbers to control its garbage-collection cycles:
+    -- the garbage-collector pause, the garbage-collector step multiplier,
+    -- and the garbage-collector step size.
+    --
+    -- The garbage-collector pause controls how long the collector waits before
+    -- starting a new cycle. The collector starts a new cycle when the use of memory
+    -- hits n% of the use after the previous collection. Larger values make the
+    -- collector less aggressive. Values equal to or less than 100 mean the collector
+    -- will not wait to start a new cycle. A value of 200 means that the collector
+    -- waits for the total memory in use to double before starting a new cycle.
+    -- The default value is 200; the maximum value is 1000.
+    --
+    -- The garbage-collector step multiplier controls the speed of the collector
+    -- relative to memory allocation, that is, how many elements it marks or sweeps
+    -- for each kilobyte of memory allocated. Larger values make the collector more
+    -- aggressive but also increase the size of each incremental step. You should
+    -- not use values less than 100, because they make the collector too slow and
+    -- can result in the collector never finishing a cycle.
+    -- The default value is 100; the maximum value is 1000.
+    --
+    -- The garbage-collector step size controls the size of each incremental step,
+    -- specifically how many bytes the interpreter allocates before performing a step.
+    -- This parameter is logarithmic: A value of n means the interpreter will
+    -- allocate 2n bytes between steps and perform equivalent work during the step.
+    -- A large value (e.g., 60) makes the collector a stop-the-world (non-incremental)
+    -- collector. The default value is 13, which means steps of approximately 8 Kbytes.
+    --------------------------------------------------------------------------------
+    if garbageCollectionMode == "incremental" then
+        local gcPause = 100             -- The default value is 200; the maximum value is 1000.
+        local stepMultiplier = 100      -- The default value is 100; the maximum value is 1000.
+        local stepSize = 13             -- The default value is 13, which means steps of approximately 8 Kbytes.
+        collectgarbage("incremental", gcPause, stepMultiplier, stepSize)
     end
 
     --------------------------------------------------------------------------------
-    -- Global Variable to confirm CommandPost has successfully loaded:
+    -- Use Generational Garbage Collection:
+    --
+    -- In generational mode, the collector does frequent minor collections, which
+    -- traverses only objects recently created. If after a minor collection the use
+    -- of memory is still above a limit, the collector does a stop-the-world major
+    -- collection, which traverses all objects. The generational mode uses two
+    -- parameters: the minor multiplier and the the major multiplier.
+    --
+    -- The minor multiplier controls the frequency of minor collections. For a
+    -- minor multiplier x, a new minor collection will be done when memory grows x%
+    -- larger than the memory in use after the previous major collection. For instance,
+    -- for a multiplier of 20, the collector will do a minor collection when the use
+    -- of memory gets 20% larger than the use after the previous major collection.
+    -- The default value is 20; the maximum value is 200.
+    --
+    -- The major multiplier controls the frequency of major collections.
+    -- For a major multiplier x, a new major collection will be done when memory
+    -- grows x% larger than the memory in use after the previous major collection.
+    -- For instance, for a multiplier of 100, the collector will do a major
+    -- collection when the use of memory gets larger than twice the use after the
+    -- previous collection. The default value is 100; the maximum value is 1000.
     --------------------------------------------------------------------------------
-    cpLoaded = true
+    if garbageCollectionMode == "generational" then
+        local minorMultiplier = 5       -- The default value is 20; the maximum value is 200.
+        local majorMultiplier = 50      -- The default value is 100; the maximum value is 1000.
+        collectgarbage("generational", minorMultiplier, majorMultiplier)
+    end
 
     --------------------------------------------------------------------------------
     -- Collect Garbage because we love a fresh slate:
     --------------------------------------------------------------------------------
-    collectgarbage()
+    collectgarbage("collect")
+    collectgarbage("collect")
+    log.df("Garbage Collection Mode: %s", garbageCollectionMode)
 
+    --------------------------------------------------------------------------------
+    -- Return the module:
+    --------------------------------------------------------------------------------
     return mod
-
 end
 
 return mod.init()

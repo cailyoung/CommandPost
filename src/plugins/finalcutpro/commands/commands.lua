@@ -1,77 +1,68 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---               F I N A L    C U T    P R O    C O M M A N D S               --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === plugins.finalcutpro.commands ===
 ---
 --- The 'fcpx' command collection.
 --- These are only active when FCPX is the active (ie. frontmost) application.
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
+local require       = require
 
---------------------------------------------------------------------------------
--- CommandPost Extensions:
---------------------------------------------------------------------------------
-local commands                  = require("cp.commands")
-local fcp                       = require("cp.apple.finalcutpro")
+--local log           = require "hs.logger".new "fcpCmds"
 
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
+local application   = require "hs.application"
+local appWatcher    = require "hs.application.watcher"
+
+local commands      = require "cp.commands"
+local fcp           = require "cp.apple.finalcutpro"
+
 local mod = {}
 
---------------------------------------------------------------------------------
---
--- THE PLUGIN:
---
---------------------------------------------------------------------------------
+function mod.checkFrontmostApp()
+    local frontmostApplication = application.frontmostApplication()
+    local bundleID = frontmostApplication and frontmostApplication:bundleID()
+    if bundleID and bundleID == fcp:bundleID() then
+        mod.cmds:isEnabled(true)
+    else
+        mod.cmds:isEnabled(false)
+    end
+end
+
 local plugin = {
     id              = "finalcutpro.commands",
     group           = "finalcutpro",
 }
 
---------------------------------------------------------------------------------
--- INITIALISE PLUGIN:
---------------------------------------------------------------------------------
 function plugin.init()
+    --------------------------------------------------------------------------------
+    -- Only load plugin if FCPX is supported:
+    --------------------------------------------------------------------------------
+    if not fcp:isSupported() then return end
 
     --------------------------------------------------------------------------------
-    -- New Final Cut Pro Command Collection:
+    -- Initialise the Final Cut Pro Commands:
     --------------------------------------------------------------------------------
     mod.cmds = commands.new("fcpx")
 
     --------------------------------------------------------------------------------
-    -- Switch to Final Cut Pro to activate:
+    -- Watch for Final Cut Pro becoming active:
     --------------------------------------------------------------------------------
-    mod.cmds:watch({
-        activate    = function()
-            fcp:launch()
-        end,
-    })
-
-    --------------------------------------------------------------------------------
-    -- Enable/Disable as Final Cut Pro becomes Active/Inactive:
-    --------------------------------------------------------------------------------
-    mod.isEnabled = fcp.isFrontmost:AND(fcp.isModalDialogOpen:NOT()):watch(function(enabled)
-        mod.cmds:isEnabled(enabled)
-    end)
+    mod._appWatcher = appWatcher.new(function(_, event)
+        if event == appWatcher.activated then
+            mod.checkFrontmostApp()
+        end
+    end):start()
 
     return mod.cmds
 end
 
---------------------------------------------------------------------------------
--- POST INITIALISATION:
---------------------------------------------------------------------------------
 function plugin.postInit()
-    mod.isEnabled:update()
+    --------------------------------------------------------------------------------
+    -- Only load plugin if FCPX is supported:
+    --------------------------------------------------------------------------------
+    if not fcp:isSupported() then return end
+
+    --------------------------------------------------------------------------------
+    -- Check on CommandPost's launch:
+    --------------------------------------------------------------------------------
+    mod.checkFrontmostApp()
 end
 
 return plugin

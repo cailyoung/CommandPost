@@ -1,41 +1,23 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---                     P R E F E R E N C E S   M A N A G E R                  --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === plugins.core.setup.panel ===
 ---
 --- CommandPost Setup Window Panel.
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
+local require = require
 
---------------------------------------------------------------------------------
--- Hammerspoon Extensions:
---------------------------------------------------------------------------------
-local uuid                                      = require("hs.host").uuid
+local host    = require("hs.host")
 
---------------------------------------------------------------------------------
--- CommandPost Extensions:
---------------------------------------------------------------------------------
-local html                                      = require("cp.web.html")
-local ui                                        = require("cp.web.ui")
+local html    = require("cp.web.html")
+local ui      = require("cp.web.ui")
 
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
+local uuid    = host.uuid
+
+
 local panel = {}
 
 --- plugins.core.setup.panel.WEBVIEW_LABEL -> string
 --- Constant
 --- The ID for the Webview
-panel.WEBVIEW_LABEL                             = "setup"
+panel.WEBVIEW_LABEL = "setup"
 
 --- plugins.core.setup.panel.new(id, priority) -> plugins.core.setup.panel
 --- Constructor
@@ -87,18 +69,18 @@ local function getClass(params)
     return class
 end
 
---- plugins.core.setup.panel:addContent(content, unescaped) -> panel
+--- plugins.core.setup.panel:addContent(content[, escaped]) -> panel
 --- Method
 --- Adds the specified `content` to the panel.
 ---
 --- Parameters:
---- * `content` - a value that can be converted to a string.
---- * `unescaped` - if `true`, the content will not be escaped. Defaults to true.
+---  * `content` - a value that can be converted to a string.
+---  * `escaped` - if `true`, the content will not be escaped. Defaults to true.
 ---
 --- Returns:
---- * The panel.
-function panel:addContent(content, unescaped)
-    self._content(content, unescaped)
+---  * The panel.
+function panel:addContent(content, escaped)
+    self._content(content, escaped)
     return self
 end
 
@@ -107,11 +89,11 @@ end
 --- Adds the specified `content` to the panel's footer.
 ---
 --- Parameters:
---- * `content` - a value that can be converted to a string.
---- * `unescaped` - if `true`, the content will not be escaped. Defaults to true.
+---  * `content` - a value that can be converted to a string.
+---  * `unescaped` - if `true`, the content will not be escaped. Defaults to true.
 ---
 --- Returns:
---- * The panel.
+---  * The panel.
 function panel:addFooter(content, unescaped)
     self._footer(content, unescaped)
     return self
@@ -122,10 +104,10 @@ end
 --- Gets a handler from an Handler ID
 ---
 --- Parameters:
---- * `id` - the Handler ID
+---  * `id` - the Handler ID
 ---
 --- Returns:
---- * A handler.
+---  * A handler.
 function panel:getHandler(id)
     return self._handlers[id]
 end
@@ -182,31 +164,30 @@ function panel:addHandler(event, id, handlerFn, keys)
     self._handlers[id] = handlerFn
 end
 
---- plugins.core.setup.panel:addParagraph(content, unescaped, class) -> panel
+--- plugins.core.setup.panel:addParagraph(content[, escaped[, class]]) -> panel
 --- Method
 --- Adds a Paragraph to the panel
 ---
 --- Parameters:
 ---  * content - The content as a string
----  * unescaped - Whether or not the HTML should be escaped as a boolean
+---  * escaped - Whether or not the HTML should be escaped as a boolean
 ---  * class - The class as a string
 ---
 --- Returns:
---- * The panel object.
-function panel:addParagraph(content, unescaped, class)
-    return self:addContent(html.p { class=getClass({class=class}) } (content, unescaped))
+---  * The panel object.
+function panel:addParagraph(content, escaped, class)
+    return self:addContent(html.p { class=getClass({class=class}) } (content, escaped))
 end
 
 --- plugins.core.setup.panel:addCheckbox(params) -> panel
 --- Method
---- Adds a checkbox to the panel with the specified `priority` and `params`.
+--- Adds a checkbox to the panel with the specified `params`.
 ---
 --- Parameters:
----  * `priority`   - The priority number for the checkbox.
 ---  * `params`     - The set of parameters for the checkbox.
 ---
 --- Returns:
---- * The panel object.
+---  * The panel object.
 ---
 --- Notes:
 ---  * The `params` can contain the following fields:
@@ -244,7 +225,7 @@ end
 ---  * text - The text of the heading as a string
 ---
 --- Returns:
---- * The panel object.
+---  * The panel object.
 function panel:addHeading(text)
     return self:addContent(ui.heading({text=text, level=1}))
 end
@@ -257,7 +238,7 @@ end
 ---  * text - The text of the sub-heading as a string
 ---
 --- Returns:
---- * The panel object.
+---  * The panel object.
 function panel:addSubHeading(text)
     return self:addContent(ui.heading({text=text, level=2}))
 end
@@ -270,7 +251,7 @@ end
 ---  * params - A table of parameters
 ---
 --- Returns:
---- * The panel object.
+---  * The panel object.
 function panel:addTextbox(params)
     params.id = params.id or uuid()
 
@@ -297,7 +278,7 @@ end
 ---  * params - A table of parameters
 ---
 --- Returns:
---- * The panel object.
+---  * The panel object.
 function panel:addPassword(params)
     params.id = params.id or uuid()
 
@@ -324,7 +305,7 @@ end
 ---  * params - A table of parameters
 ---
 --- Returns:
---- * The panel object.
+---  * The panel object.
 function panel:addSelect(params)
 
     --------------------------------------------------------------------------------
@@ -355,7 +336,7 @@ end
 ---  * src - Location of the icon.
 ---
 --- Returns:
---- * The panel object.
+---  * The panel object.
 function panel:addIcon(src)
     --------------------------------------------------------------------------------
     -- Set up default values:
@@ -397,6 +378,5 @@ function panel:addButton(params)
     return self
 
 end
-
 
 return panel

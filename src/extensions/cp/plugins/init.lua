@@ -1,9 +1,3 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---                       P L U G I N     L O A D E R                          --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === cp.plugins ===
 ---
 --- This is a simple plugin manager.
@@ -105,7 +99,6 @@
 --- ### `function plugin.init(dependencies[, environment]) -> module`
 ---
 --- This function is basically required. It will be executed when the plugin is initialised. The `dependencies` parameter is a table containing the list of dependencies that the plugin defined via the `dependencies` property. The `environment` provides access to resources such as images, HTML files, or other lua modules that are bundled with the plugin. See `Simple vs Complex Plugins` below.
---- ```
 ---
 --- As you may have noted, there are two ways to specify a plugin is required. Either by simply specifying it as an 'array' item (the first example) or as a key/value (the second example). Doing the later allows you to specify an alias for the dependency, which can be used in the `init(...)` function, like so:
 ---
@@ -152,45 +145,31 @@
 ---
 --- These modules will not be accessible to other plugins or to the main application. They are only available to code inside the plugin.
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
+local require       = require
+local hs            = _G.hs
 
---------------------------------------------------------------------------------
--- Logger:
---------------------------------------------------------------------------------
-local log                           = require("hs.logger").new("plugins")
+local log           = require "hs.logger".new "plugins"
 
---------------------------------------------------------------------------------
--- Hammerspoon Extensions:
---------------------------------------------------------------------------------
-local console                       = require("hs.console")
-local fs                            = require("hs.fs")
-local inspect                       = require("hs.inspect")
-local fnutils                       = require("hs.fnutils")
-local timer                         = require("hs.timer")
+local console       = require "hs.console"
+local fs            = require "hs.fs"
+local inspect       = require "hs.inspect"
+local fnutils       = require "hs.fnutils"
+local timer         = require "hs.timer"
 
---------------------------------------------------------------------------------
--- CommandPost Extensions:
---------------------------------------------------------------------------------
-local config                        = require("cp.config")
-local env                           = require("cp.plugins.env")
-local plugin                        = require("cp.plugins.plugin")
-local tools                         = require("cp.tools")
+local config        = require "cp.config"
+local env           = require "cp.plugins.env"
+local plugin        = require "cp.plugins.plugin"
+local tools         = require "cp.tools"
 
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
+local clock         = timer.secondsSinceEpoch
+local doAfter       = timer.doAfter
+
 local mod = {}
 
---- cp.plugins.SLOW_PLUGIN_WARNING_THRESHOLD -> number
---- Constant
---- Slow Plugin Warning Threshold
-mod.SLOW_PLUGIN_WARNING_THRESHOLD = 0.5
+-- SLOW_PLUGIN_WARNING_THRESHOLD -> number
+-- Constant
+-- Slow Plugin Warning Threshold
+local SLOW_PLUGIN_WARNING_THRESHOLD = 1
 
 --- cp.plugins.CACHE -> table
 --- Constant
@@ -216,7 +195,7 @@ mod.status = {
 --- cp.plugins.SETTINGS_DISABLED -> string
 --- Constant
 --- Plugin Disabled Code
-mod.SETTINGS_DISABLED   = "plugins.disabled"
+mod.SETTINGS_DISABLED = "plugins.disabled"
 
 -- cachePlugin(id, pluginTable, status, scriptFile) -> plugin | nil
 -- Function
@@ -236,8 +215,6 @@ local function cachePlugin(id, pluginTable, status, scriptFile)
         local thePlugin = plugin.init(pluginTable, status, scriptFile)
         mod.CACHE[id] = thePlugin
         mod.IDS[#mod.IDS + 1] = id
-
-        -- log.df("Loaded plugin: %s", thePlugin.id)
         return thePlugin
     else
         log.df([[Duplicate plugin with ID of '%s':
@@ -316,35 +293,31 @@ end
 ---  * None
 function mod.initPlugins()
     for _,id in ipairs(mod.IDS) do
-        local startTime = os.clock()
         mod.initPlugin(id)
-        local finishTime = os.clock()
-        local loadingTime = finishTime-startTime
-        if loadingTime > mod.SLOW_PLUGIN_WARNING_THRESHOLD then
-            log.wf("Slow Plugin: %s (%s)", id, finishTime-startTime)
-        end
     end
 end
 
 --- cp.plugins.initPlugin(id) -> module
 --- Function
 --- Initialises a specific plugin with the specified path.
---- The plugin will only be loaded once, and the result of its `init(...)` function
---- will be cached for future calls.
----
---- Eg:
----
---- ```
---- plugins.initPlugin("cp.plugins.test.helloworld")
---- ```
 ---
 --- Parameters:
 ---  * `id` - The LUA package to look in
 ---
 --- Returns:
 ---  * the result of the plugin's `init(...)` function call.
+---
+--- Notes:
+---  * The plugin will only be loaded once, and the result of its `init(...)` function will be cached for future calls.
+---
+--- Eg:
+---
+--- ```
+--- plugins.initPlugin("cp.plugins.test.helloworld")
+--- ```
 function mod.initPlugin(id)
     -- log.df("Loading plugin '%s'", id)
+    local startTime = clock()
 
     local thePlugin = mod.getPlugin(id)
     if not thePlugin then
@@ -405,6 +378,10 @@ function mod.initPlugin(id)
     --------------------------------------------------------------------------------
     if module == nil then
         module = true
+    elseif type(module) == "table" and getmetatable(module) == nil then
+        setmetatable(module, {
+            __tostring = function() return "plugin: " .. id end
+        })
     end
 
     --------------------------------------------------------------------------------
@@ -417,6 +394,16 @@ function mod.initPlugin(id)
     -- Return the module:
     --------------------------------------------------------------------------------
     -- log.df("Initialised plugin: %s", id)
+
+    --------------------------------------------------------------------------------
+    -- Detect slow plugins:
+    --------------------------------------------------------------------------------
+    local finishTime = clock()
+    local loadingTime = finishTime-startTime
+    if loadingTime > SLOW_PLUGIN_WARNING_THRESHOLD then
+        log.wf("Slow Plugin: %s (%s)", id, finishTime-startTime)
+    end
+
     return module
 end
 
@@ -429,10 +416,10 @@ end
 ---
 --- Returns:
 ---  * an array of the dependencies required by the plugin, or `nil` if any could not be loaded.
-function mod.loadDependencies(plugin)
+function mod.loadDependencies(thePlugin)
     local dependencies = {}
-    if plugin.dependencies then
-        for path,alias in pairs(plugin.dependencies) do
+    if thePlugin.dependencies then
+        for path,alias in pairs(thePlugin.dependencies) do
             if type(path) == "number" then
                 --------------------------------------------------------------------------------
                 -- No alias:
@@ -447,12 +434,12 @@ function mod.loadDependencies(plugin)
                 if alias then
                     dependencies[alias] = dependency
                 end
-                mod.addDependent(path, plugin)
+                mod.addDependent(path, thePlugin)
             else
                 --------------------------------------------------------------------------------
                 -- Unable to load the dependency. Fail:
                 --------------------------------------------------------------------------------
-                log.ef("Unable to load dependency for plugin '%s': %s", plugin.id, path)
+                log.ef("Unable to load dependency for plugin '%s': %s", thePlugin.id, path)
                 return nil
             end
         end
@@ -460,7 +447,7 @@ function mod.loadDependencies(plugin)
     return dependencies
 end
 
---- cp.plugins.addDependent(id) -> none
+--- cp.plugins.addDependent(id, dependentPlugin) -> none
 --- Function
 --- Adds the `dependentPlugin` as a dependent of the plugin with the specified id.
 ---
@@ -482,7 +469,7 @@ end
 --- Retrieves the list of dependent plugins for the specified plugin id.
 ---
 --- Parameters:
---- * `id`      - The plugin ID.
+---  * `id`      - The plugin ID.
 ---
 --- Returns:
 ---  * The table of dependents.
@@ -491,53 +478,81 @@ function mod.getDependents(id)
     return thePlugin and thePlugin:getDependents()
 end
 
---- cp.plugins.disable(id) -> nothing
+--- cp.plugins.disable(...) -> boolean, string
 --- Function
---- Disabled the plugin with the specified ID and reloads the application.
+--- Disabled the plugin(s) with the specified IDs and reloads the application.
 ---
 --- Parameters:
----  * `id` - The plugin package ID.
+---  * `...` - The list of plugin package IDs.
 ---
 --- Returns:
----  * `true` if the plugin was disabled, or `false` if it could not be disabled.
-function mod.disable(id)
-    local thePlugin = mod.getPlugin(id)
-    if thePlugin and not thePlugin.required then
-        --------------------------------------------------------------------------------
-        -- First check with the plugin, if relevant:
-        --------------------------------------------------------------------------------
-        if type(thePlugin.disable) == "function" then
-            if not thePlugin.disable(thePlugin:getDependencies(), env.new(thePlugin:getRootPath())) then
-                return false
+---  * `true` if the plugin was disabled, or `false` if any of the plugins failed.
+---  * If disabling failed, the first ID that failed is returned as the second value.
+function mod.disable(...)
+    local count = select("#", ...)
+
+    if count > 0 then
+        local disabled = config.get(mod.SETTINGS_DISABLED, {})
+
+        for i = 1,count do
+            local id = select(i, ...)
+            local thePlugin = mod.getPlugin(id)
+            if thePlugin and not thePlugin.required then
+                --------------------------------------------------------------------------------
+                -- First check with the plugin, if relevant:
+                --------------------------------------------------------------------------------
+                if type(thePlugin.disable) == "function" then
+                    if thePlugin.disable(thePlugin:getDependencies(), env.new(thePlugin:getRootPath())) then
+                        disabled[id] = true
+                    else
+                        return false, id
+                    end
+                else
+                    disabled[id] = true
+                end
+            else
+                return false, id
             end
         end
-        local disabled = config.get(mod.SETTINGS_DISABLED, {})
-        disabled[id] = true
+
         config.set(mod.SETTINGS_DISABLED, disabled)
-        console.clearConsole()
         -- reload CP after returning `true`
-        timer.doAfter(0.001, function() hs.reload() end)
+        doAfter(0.001, function()
+            console.clearConsole()
+            hs.reload()
+        end)
         return true
     end
-    return false
+    return false, nil
 end
 
---- cp.plugins.enable(id) -> nothing
+--- cp.plugins.enable(...) -> boolean, string
 --- Function
 --- Enables the plugin with the specified ID, and reloads the application.
 ---
 --- Parameters:
----  * `id` - The plugin package ID.
+---  * `...` - The plugin package ID.
 ---
 --- Returns:
----  * `true` if the plugin had been disabled and is now enabled.
-function mod.enable(id)
-    local disabled = config.get(mod.SETTINGS_DISABLED, {})
-    if disabled[id] then
-        disabled[id] = false
+---  * `true` if the plugins had been disabled and are now enabled.
+---  * If enabling failed, the plugin ID which could not be enabled is returned as the second value.
+function mod.enable(...)
+    local count = select("#", ...)
+    if count > 0 then
+        local disabled = config.get(mod.SETTINGS_DISABLED, {})
+        for i = 1,count do
+            local id = select(i, ...)
+            if disabled[id] then
+                disabled[id] = false
+            else
+                return false, id
+            end
+        end
         config.set(mod.SETTINGS_DISABLED, disabled)
-        console.clearConsole()
-        timer.doAfter(0.001, function() hs.reload() end)
+        doAfter(0.001, function()
+            console.clearConsole()
+            hs.reload()
+        end)
         return true
     end
     return false
@@ -545,8 +560,7 @@ end
 
 --- cp.plugins.isDisabled(id) -> boolean
 --- Function
---- Checks if the specified plugin ID is disabled.
---- Plugins are enabled by default.
+--- Checks if the specified plugin ID is disabled. Plugins are enabled by default.
 ---
 --- Parameters:
 ---  * `id` - The plugin package ID.
@@ -569,11 +583,11 @@ end
 ---  * None
 function mod.postInitPlugins()
     for _,id in pairs(mod.IDS) do
-        local startTime = os.clock()
+        local startTime = clock()
         mod.postInitPlugin(id)
-        local finishTime = os.clock()
+        local finishTime = clock()
         local loadingTime = finishTime-startTime
-        if loadingTime > mod.SLOW_PLUGIN_WARNING_THRESHOLD then
+        if loadingTime > SLOW_PLUGIN_WARNING_THRESHOLD then
             log.wf("Slow Plugin (Post): %s (%s)", id, finishTime-startTime)
         end
     end
@@ -581,8 +595,7 @@ end
 
 --- cp.plugins.postInitPlugin(id) -> boolean
 --- Function
---- Runs any post-initialisation functions declared for the specified plugin ID.
---- Any dependencies will be post-initialised prior to the plugin being post-initialised.
+--- Runs any post-initialisation functions declared for the specified plugin ID. Any dependencies will be post-initialised prior to the plugin being post-initialised.
 ---
 --- Parameters:
 ---  * `id` - The plugin package ID.
@@ -640,20 +653,21 @@ end
 --- cp.plugins.init(paths) -> cp.plugins
 --- Function
 --- Initialises the plugin loader to look in the specified file paths for plugins.
---- Plugins in earlier packages will take precedence over those in later paths, if
---- there are duplicates.
----
---- Eg:
----
---- ```lua
---- plugins.init({"~/Library/Application Support/CommandPost/Plugins"})
---- ```
 ---
 --- Parameters:
 ---  * `paths` - An array of paths to search for plugins in.
 ---
 --- Returns:
 ---  * `cp.plugins` - The module.
+---
+--- Notes:
+---  * Plugins in earlier packages will take precedence over those in later paths, if there are duplicates.
+---
+--- Eg:
+---
+--- ```lua
+--- plugins.init({"~/Library/Application Support/CommandPost/Plugins"})
+--- ```
 function mod.init(paths)
 
     mod.paths = fnutils.copy(paths)
@@ -703,17 +717,16 @@ end
 
 --- cp.plugins.scanDirectory(directoryPath) -> cp.plugins
 --- Function
---- Scans the specified directory and loads any plugins in the directory,
---- along with any in sub-directories.
----
---- Plugins can be simple or complex. Simple plugins are a single `*.lua` file,
---- not named `init.lua`. Complex plugins are folders containing an `init.lua` file.
+--- Scans the specified directory and loads any plugins in the directory, along with any in sub-directories.
 ---
 --- Parameters:
 ---  * `directoryPath` - The path to the directory to scan.
 ---
 --- Returns:
 ---  * boolean - `true` if the path was loaded successfully, false if there were any issues.
+---
+--- Notes:
+---  * Plugins can be simple or complex. Simple plugins are a single `*.lua` file, not named `init.lua`. Complex plugins are folders containing an `init.lua` file.
 function mod.scanDirectory(directoryPath)
     -- log.df("Scanning directory: %s", directoryPath)
     local path = fs.pathToAbsolute(directoryPath)
@@ -797,21 +810,21 @@ end
 --- cp.plugins.loadComplexPlugin(path) -> plugin
 --- Function
 --- Loads a 'complex' plugin, which is a folder containing an `init.lua` file.
---- Complex plugins can also have other resources, accessible via an `cp.plugins.env` parameter
---- passed to the `init()` function. For example, an image stored in the `images` folder
---- inside the plugin can be accessed via:
----
---- ```lua
---- function plugin.init(dependencies, env)
----     local imagePath = env:pathToAbsolute("image/example.jpg")
---- end
---- ```
 ---
 --- Parameters:
 ---  * `path` - The plugin package ID.
 ---
 --- Returns:
 ---  * `true` if the plugin is successfully post-initialised.
+---
+--- Notes:
+---  * Complex plugins can also have other resources, accessible via an `cp.plugins.env` parameter passed to the `init()` function. For example, an image stored in the `images` folder inside the plugin can be accessed via:
+---
+--- ```lua
+--- function plugin.init(dependencies, env)
+---     local imagePath = env:pathToAbsolute("image/example.jpg")
+--- end
+--- ```
 function mod.loadComplexPlugin(path)
     local initFile = fs.pathToAbsolute(path .. "/init.lua")
     if not initFile then
@@ -833,14 +846,18 @@ function mod.loadComplexPlugin(path)
     --------------------------------------------------------------------------------
     -- Alternate 'require' function that caches plugin resources locally:
     --------------------------------------------------------------------------------
-    local pluginRequire = function(name)
+    local pluginRequire
+    pluginRequire = function(name)
         if cache[name] then
             return cache[name]
         end
-        local file = package.searchpath(name, searchPath) -- luacheck: ignore
+        local file = package.searchpath(name, searchPath)
         if file then
+            local gRequire = _G.require
+            _G.require = pluginRequire
             local result = dofile(file)
             cache[name] = result
+            _G.require = gRequire
             return result
         end
         return globalRequire(name)
@@ -849,7 +866,7 @@ function mod.loadComplexPlugin(path)
     --------------------------------------------------------------------------------
     -- Replace default 'require':
     --------------------------------------------------------------------------------
-    require = pluginRequire -- luacheck: ignore
+    _G.require = pluginRequire
 
     --------------------------------------------------------------------------------
     -- Load the plugin:
@@ -862,7 +879,7 @@ function mod.loadComplexPlugin(path)
     --------------------------------------------------------------------------------
     -- Reset 'require' to the global require:
     --------------------------------------------------------------------------------
-    require = globalRequire -- luacheck: ignore
+    _G.require = globalRequire
 
     return result
 end

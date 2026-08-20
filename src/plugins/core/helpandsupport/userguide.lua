@@ -1,25 +1,12 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---                         U S E R     G U I D E                              --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === plugins.core.helpandsupport.userguide ===
 ---
 --- User Guide Menu Item.
 
---------------------------------------------------------------------------------
---
--- CONSTANTS:
---
---------------------------------------------------------------------------------
-local PRIORITY          = 1
+local require = require
 
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
+local i18n = require("cp.i18n")
+
+
 local mod = {}
 
 --- plugins.core.helpandsupport.userguide.show() -> nil
@@ -32,42 +19,33 @@ local mod = {}
 --- Returns:
 ---  * None
 function mod.show()
-    os.execute('open "http://help.commandpost.io/"')
+    os.execute('open "https://commandpost.fcp.cafe/"')
 end
 
---------------------------------------------------------------------------------
---
--- THE PLUGIN:
---
---------------------------------------------------------------------------------
+
 local plugin = {
     id              = "core.helpandsupport.userguide",
     group           = "core",
     dependencies    = {
-        ["core.menu.helpandsupport.commandpost"]    = "helpandsupport",
-        ["core.commands.global"]                    = "global",
+        ["core.menu.manager"] = "menuManager",
+        ["core.commands.global"] = "global",
     }
 }
 
---------------------------------------------------------------------------------
--- INITIALISE PLUGIN:
---------------------------------------------------------------------------------
 function plugin.init(deps)
-
     --------------------------------------------------------------------------------
     -- Commands:
     --------------------------------------------------------------------------------
-    local global = deps.global
-    global:add("cpUserGuide")
+    deps.global
+        :add("cpUserGuide")
         :whenActivated(mod.show)
         :groupedBy("helpandsupport")
 
     --------------------------------------------------------------------------------
     -- Menubar:
     --------------------------------------------------------------------------------
-    deps.helpandsupport:addItem(PRIORITY, function()
-        return { title = i18n("userGuide"), fn = mod.show }
-    end)
+    deps.menuManager.commandPostHelpAndSupport
+        :addItem(5, function() return { title = i18n("userGuide"), fn = mod.show } end)
 
     return mod
 end

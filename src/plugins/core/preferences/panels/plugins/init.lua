@@ -1,47 +1,29 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---            P L U G I N S    P R E F E R E N C E S    P A N E L            --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
---- === core.preferences.panels.plugins ===
+--- === plugins.core.preferences.panels.plugins ===
 ---
 --- Plugins Preferences Panel
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
+local require           = require
 
---------------------------------------------------------------------------------
--- Logger:
---------------------------------------------------------------------------------
-local log                                       = require("hs.logger").new("prefsPlugin")
+local hs                = _G.hs
 
---------------------------------------------------------------------------------
--- Hammerspoon Extensions:
---------------------------------------------------------------------------------
-local dialog                                    = require("hs.dialog")
-local fs                                        = require("hs.fs")
-local image                                     = require("hs.image")
-local inspect                                   = require("hs.inspect")
+local log               = require "hs.logger".new "prefsPlugin"
 
---------------------------------------------------------------------------------
--- CommandPost Extensions:
---------------------------------------------------------------------------------
-local config                                    = require("cp.config")
-local plugins                                   = require("cp.plugins")
-local tools                                     = require("cp.tools")
+local dialog            = require "hs.dialog"
+local fs                = require "hs.fs"
+local image             = require "hs.image"
+local inspect           = require "hs.inspect"
 
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
+local config            = require "cp.config"
+local i18n              = require "cp.i18n"
+local plugins           = require "cp.plugins"
+local tools             = require "cp.tools"
+
+local iconFallback      = tools.iconFallback
+local imageFromPath     = image.imageFromPath
+
 local mod = {}
 
---- core.preferences.panels.plugins.SETTINGS_DISABLED
+--- plugins.core.preferences.panels.plugins.SETTINGS_DISABLED
 --- Constant
 --- Plugins Disabled
 mod.SETTINGS_DISABLED = "plugins.disabled"
@@ -176,9 +158,11 @@ local function controllerCallback(id, params)
     elseif action == "pluginsFolder" then
         openPluginsFolder()
     elseif action == "disable" then
-        disablePlugin(id)
+        disablePlugin(params.pluginID)
     elseif action == "enable" then
-        enablePlugin(id)
+        enablePlugin(params.pluginID)
+    elseif action == "edit" then
+        hs.execute([[open "]] .. params.pluginID .. [["]])
     else
         log.ef("Unrecognised action: %s %s", id, inspect(params))
     end
@@ -208,6 +192,7 @@ local function generateContent()
         info.category = pluginCategory(plugin)
         info.status = pluginStatus(plugin)
         info.shortName = pluginShortName(plugin.id)
+        info.scriptFile = plugin:getScriptFile()
 
         local action = nil
 
@@ -226,12 +211,10 @@ local function generateContent()
         end
 
         pluginInfo[#pluginInfo+1] = info
-        mod.panel:addHandler("onclick", info.id, controllerCallback, { "action" })
-
     end
 
     table.sort(pluginInfo, function(a, b)
-        return a.category < b.category or a.category == b.category and a.shortName < b.shortName
+        return string.lower(a.category) < string.lower(b.category) or string.lower(a.category) == string.lower(b.category) and string.lower(a.shortName) < string.lower(b.shortName)
     end)
 
     --------------------------------------------------------------------------------
@@ -249,14 +232,20 @@ local function generateContent()
     --------------------------------------------------------------------------------
     mod.panel:addHandler("onclick", "openPluginsFolder", openPluginsFolder)
 
+    --------------------------------------------------------------------------------
+    -- Handle the Plugin Actions:
+    --------------------------------------------------------------------------------
+    mod.panel:addHandler("onchange", "pluginsPanelCallback", controllerCallback)
+
     local env = {
+        i18n        = i18n,
         plugins     = pluginInfo,
     }
 
     return mod.renderPanel(env)
 end
 
---- core.preferences.panels.plugins.init() -> none
+--- plugins.core.preferences.panels.plugins.init(deps, env) -> none
 --- Function
 --- Initialises the module.
 ---
@@ -277,21 +266,17 @@ function mod.init(deps, env)
         priority    = 2050,
         id          = "plugins",
         label       = i18n("pluginsPanelLabel"),
-        image       = image.imageFromPath(tools.iconFallback("/System/Library/PreferencePanes/Extensions.prefPane/Contents/Resources/Extensions.icns")),
+        image       = imageFromPath(iconFallback(config.basePath .. "/plugins/core/preferences/panels/images/Extensions.icns")),
         tooltip     = i18n("pluginsPanelTooltip"),
-        height      = 492,
+        height      = 615,
     })
 
-    mod.panel:addContent(10, generateContent, true)
+    mod.panel:addContent(10, generateContent, false)
 
     return mod
 end
 
---------------------------------------------------------------------------------
---
--- THE PLUGIN:
---
---------------------------------------------------------------------------------
+
 local plugin = {
     id              = "core.preferences.panels.plugins",
     group           = "core",
@@ -301,19 +286,18 @@ local plugin = {
     }
 }
 
---------------------------------------------------------------------------------
--- INITIALISE PLUGIN:
---------------------------------------------------------------------------------
 function plugin.init(deps, env)
-
     --------------------------------------------------------------------------------
     -- Commands:
     --------------------------------------------------------------------------------
-    local global = deps.global
-    global:add("cpOpenPluginsFolder")
+    deps.global
+        :add("cpOpenPluginsFolder")
         :whenActivated(openPluginsFolder)
         :groupedBy("commandPost")
 
+    --------------------------------------------------------------------------------
+    -- Initialise the module:
+    --------------------------------------------------------------------------------
     return mod.init(deps, env)
 end
 

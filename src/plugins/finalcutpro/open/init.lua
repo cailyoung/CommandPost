@@ -1,40 +1,12 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---                    O P E N   F I N A L   C U T   P R O                     --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === plugins.finalcutpro.open ===
 ---
 --- Opens Final Cut Pro via Global Shortcut & Menubar.
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
+local require       = require
 
---------------------------------------------------------------------------------
--- CommandPost Extensions:
---------------------------------------------------------------------------------
-local fcp           = require("cp.apple.finalcutpro")
+local fcp           = require "cp.apple.finalcutpro"
+local i18n          = require "cp.i18n"
 
---------------------------------------------------------------------------------
---
--- CONSTANTS:
---
---------------------------------------------------------------------------------
-
--- PRIORITY -> number
--- Constant
--- The menubar position priority.
-local PRIORITY = 3
-
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
 local mod = {}
 
 --- plugins.finalcutpro.open.app() -> none
@@ -61,55 +33,30 @@ end
 ---  * None
 function mod.commandEditor()
     fcp:launch()
-    fcp:commandEditor():show()
+    fcp.commandEditor:show()
 end
 
---------------------------------------------------------------------------------
---
--- THE PLUGIN:
---
---------------------------------------------------------------------------------
 local plugin = {
     id = "finalcutpro.open",
     group = "finalcutpro",
     dependencies = {
-        ["finalcutpro.menu.top"] = "top",
         ["core.commands.global"] = "global",
         ["finalcutpro.commands"] = "fcpxCmds",
     }
 }
 
---------------------------------------------------------------------------------
--- INITIALISE PLUGIN:
---------------------------------------------------------------------------------
 function plugin.init(deps)
-
     --------------------------------------------------------------------------------
-    -- Menubar:
+    -- Only load plugin if FCPX is supported:
     --------------------------------------------------------------------------------
-    deps.top
-        :addItem(PRIORITY + 1, function()
-            if fcp:isInstalled() then
-                return {
-                    title = i18n("launch") .. " " .. i18n("finalCutPro"),
-                    fn = mod.app,
-                }
-            end
-        end)
-        :addItem(PRIORITY, function()
-            if fcp:isInstalled()  then
-                return {
-                    title = i18n("openCommandEditor"),
-                    fn = mod.commandEditor,
-                }
-            end
-        end)
+    if not fcp:isSupported() then return end
 
     --------------------------------------------------------------------------------
     -- Global Commands:
     --------------------------------------------------------------------------------
     local global = deps.global
-    global:add("cpLaunchFinalCutPro")
+    global
+        :add("cpLaunchFinalCutPro")
         :activatedBy():ctrl():alt():cmd("l")
         :whenPressed(mod.app)
         :groupedBy("finalCutPro")
@@ -118,7 +65,8 @@ function plugin.init(deps)
     -- Final Cut Pro Commands:
     --------------------------------------------------------------------------------
     local fcpxCmds = deps.fcpxCmds
-    fcpxCmds:add("cpOpenCommandEditor")
+    fcpxCmds
+        :add("cpOpenCommandEditor")
         :titled(i18n("openCommandEditor"))
         :whenActivated(mod.commandEditor)
 

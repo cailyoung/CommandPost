@@ -1,46 +1,18 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---                 i M E S S A G E     N O T I F I C A T I O N S              --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === plugins.finalcutpro.notifications.imessage ===
 ---
 --- iMessage Notifications Plugin.
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
+local require       = require
 
---------------------------------------------------------------------------------
--- Hammerspoon Extensions:
---------------------------------------------------------------------------------
-local messages                                  = require("hs.messages")
-local dialog                                    = require("hs.dialog")
+local messages      = require "hs.messages"
+local dialog        = require "hs.dialog"
 
---------------------------------------------------------------------------------
--- CommandPost Extensions:
---------------------------------------------------------------------------------
-local config                                    = require("cp.config")
+local config        = require "cp.config"
+local fcp           = require "cp.apple.finalcutpro"
+local html          = require "cp.web.html"
+local i18n          = require "cp.i18n"
+local ui            = require "cp.web.ui"
 
---------------------------------------------------------------------------------
---
--- CONSTANTS:
---
---------------------------------------------------------------------------------
-
--- PRIORITY -> number
--- Constant
--- The menubar position priority.
-local PRIORITY = 300
-
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
 local mod = {}
 
 --- plugins.finalcutpro.notifications.imessage.update() -> none
@@ -78,7 +50,6 @@ mod.enabled = config.prop("iMessageNotificationsEnabled", false):watch(function(
 --- A string containing a mobile number or Apple ID
 mod.target = config.prop("iMessageTarget")
 
-
 --- plugins.finalcutpro.notifications.imessage.sendNotification(message) -> none
 --- Function
 --- Sends a notification.
@@ -109,11 +80,6 @@ function mod.init(notifications)
     mod.update()
 end
 
---------------------------------------------------------------------------------
---
--- THE PLUGIN:
---
---------------------------------------------------------------------------------
 local plugin = {
     id = "finalcutpro.notifications.imessage",
     group = "finalcutpro",
@@ -124,10 +90,12 @@ local plugin = {
     }
 }
 
---------------------------------------------------------------------------------
--- INITIALISE PLUGIN:
---------------------------------------------------------------------------------
 function plugin.init(deps)
+    --------------------------------------------------------------------------------
+    -- Only load plugin if FCPX is supported:
+    --------------------------------------------------------------------------------
+    if not fcp:isSupported() then return end
+
     mod.init(deps.manager)
 
     --------------------------------------------------------------------------------
@@ -135,30 +103,28 @@ function plugin.init(deps)
     --------------------------------------------------------------------------------
     if deps.prefs then
         deps.prefs
-            :addContent(PRIORITY+1, [[
-                <style>
-                    .iMessageEnable {
-                        margin-bottom: 10px !important;
-                    }
-                    .testiMessage {
-                        float:left;
-                        margin-top: 5px;
-                        margin-bottom: 10px;
-                        clear: both;
-                    }
-                    .openMessages {
-                        float:left;
-                        margin-top: 5px;
-                        margin-bottom: 10px;
-                        margin-left:-15px;
-                    }
-                </style>
-                <br />
-                <br />
-                <hr />
-            ]], true)
-            :addHeading(PRIORITY+2, i18n("iMessageNotifications"))
-            :addCheckbox(PRIORITY+3,
+            :addContent(301, ui.style ([[
+                .iMessageEnable {
+                    margin-bottom: 10px !important;
+                }
+                .testiMessage {
+                    float:left;
+                    margin-top: 5px;
+                    margin-bottom: 10px;
+                    clear: both;
+                }
+                .openMessages {
+                    float:left;
+                    margin-top: 5px;
+                    margin-bottom: 10px;
+                    margin-left:-15px;
+                }
+                ]]) ..
+                html.br() ..
+                html.br() ..
+                html.hr())
+            :addHeading(302, i18n("iMessageNotifications"))
+            :addCheckbox(303,
                 {
                     label = i18n("enableiMessageNotifications"),
                     onchange = function(_, params)
@@ -177,18 +143,19 @@ function plugin.init(deps)
                     class = "iMessageEnable",
                 }
             )
-            :addTextbox(PRIORITY+4,
+            :addTextbox(304,
                 {
                     label = i18n("iMessageDestination") .. ":",
-                    value = mod.target(),
+                    value = function() return mod.target() end,
                     class = "api",
                     onchange = function(_, params)
                         mod.target(params.value)
                     end,
                 }
             )
-            :addButton(PRIORITY+5,
+            :addButton(305,
                 {
+                    width = 200,
                     label = i18n("sendTestNotification"),
                     onclick = function()
                         mod.sendNotification(i18n("thisIsATest"))
@@ -196,8 +163,9 @@ function plugin.init(deps)
                     class = "testiMessage",
                 }
             )
-            :addButton(PRIORITY+6,
+            :addButton(306,
                 {
+                    width = 200,
                     label = i18n("openMessages"),
                     onclick = function()
                         os.execute("open /Applications/Messages.app")
@@ -205,8 +173,9 @@ function plugin.init(deps)
                     class = "openMessages",
                 }
             )
-            :addButton(PRIORITY+7,
+            :addButton(307,
                 {
+                    width = 200,
                     label = i18n("openContacts"),
                     onclick = function()
                         os.execute("open /Applications/Contacts.app")

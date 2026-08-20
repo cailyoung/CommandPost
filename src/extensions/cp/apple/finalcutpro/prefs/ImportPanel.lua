@@ -1,143 +1,221 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---                   F I N A L    C U T    P R O    A P I                     --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === cp.apple.finalcutpro.prefs.ImportPanel ===
 ---
 --- Import Panel Module.
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
-local log								= require("hs.logger").new("importPanel")
-local inspect							= require("hs.inspect")
+local require = require
 
-local just								= require("cp.just")
-local prop								= require("cp.prop")
-local axutils							= require("cp.ui.axutils")
-local CheckBox							= require("cp.ui.CheckBox")
-local RadioButton						= require("cp.ui.RadioButton")
+-- local log								= require "hs.logger".new("importPanel")
 
-local id								= require("cp.apple.finalcutpro.ids") "ImportPanel"
+-- local inspect							= require "hs.inspect"
+local go                                = require "cp.rx.go"
 
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
-local ImportPanel = {}
+local axutils							= require "cp.ui.axutils"
+local CheckBox							= require "cp.ui.CheckBox"
+local PopUpButton                       = require "cp.ui.PopUpButton"
+local RadioButton                       = require "cp.ui.RadioButton"
 
--- TODO: Add documentation
-function ImportPanel:new(preferencesDialog)
-	local o = {_parent = preferencesDialog}
-	
-	return prop.extend(o, ImportPanel)
+local Panel                             = require "cp.apple.finalcutpro.prefs.Panel"
+
+local cache                             = axutils.cache
+local childFromTop                      = axutils.childFromTop
+
+local Do, If                            = go.Do, go.If
+
+local ImportPanel = Panel:subclass("cp.apple.finalcutpro.prefs.ImportPanel")
+
+--- cp.apple.finalcutpro.prefs.ImportPanel(preferencesDialog) -> ImportPanel
+--- Constructor
+--- Creates a new `ImportPanel` instance.
+---
+--- Parameters:
+---  * parent - The parent object.
+---
+--- Returns:
+---  * A new `ImportPanel` object.
+function ImportPanel:initialize(preferencesDialog)
+    Panel.initialize(self, preferencesDialog, "PEImportPreferenceName")
 end
 
--- TODO: Add documentation
-function ImportPanel:parent()
-	return self._parent
+--- cp.apple.finalcutpro.prefs.ImportPanel.copyToLibraryStorageLocation <cp.ui.RadioButton>
+--- Field
+--- The "Copy to library storage location" `RadioButton`.
+function ImportPanel.lazy.value:copyToLibraryStorageLocation()
+    return RadioButton(self, self.UI:mutate(function(original)
+        return cache(self, "_copyToLibraryStorageLocation", function()
+            return childFromTop(original(), 1, RadioButton.matches)
+        end, RadioButton.matches)
+    end))
 end
 
--- TODO: Add documentation
-function ImportPanel:UI()
-	return axutils.cache(self, "_ui", function()
-		return axutils.childFromLeft(self:parent():toolbarUI(), id "ID")
-	end)
+--- cp.apple.finalcutpro.prefs.ImportPanel.leaveFilesInPlace <cp.ui.RadioButton>
+--- Field
+--- The "Leave files in place" `RadioButton`.
+function ImportPanel.lazy.value:leaveFilesInPlace()
+    return RadioButton(self, self.UI:mutate(function(original)
+        return cache(self, "_leaveFilesInPlace", function()
+            return childFromTop(original(), 2, RadioButton.matches)
+        end, RadioButton.matches)
+    end))
 end
 
--- TODO: Add documentation
-ImportPanel.isShowing = prop.new(function(self)
-	local toolbar = self:parent():toolbarUI()
-	if toolbar then
-		local selected = toolbar:selectedChildren()
-		return #selected == 1 and selected[1] == self:UI()
-	end
-	return false
-end):bind(ImportPanel)
-
-function ImportPanel:contentsUI()
-	return self:isShowing() and self:parent():groupUI() or nil
-end
-
--- TODO: Add documentation
-function ImportPanel:show()
-	local parent = self:parent()
-	-- show the parent.
-	if parent:show():isShowing() then
-		-- get the toolbar UI
-		local panel = just.doUntil(function() return self:UI() end)
-		if panel then
-			panel:doPress()
-			just.doUntil(function() return self:isShowing() end)
-		end
-	end
-	return self
-end
-
-function ImportPanel:hide()
-	return self:parent():hide()
-end
-
-function ImportPanel:createProxyMedia()
-	if not self._createProxyMedia then
-		self._createProxyMedia = CheckBox:new(self, function()
-			return axutils.childFromTop(axutils.childrenWithRole(self:contentsUI(), "AXCheckBox"), id "CreateProxyMedia")
-		end)
-	end
-	return self._createProxyMedia
-end
-
-function ImportPanel:createOptimizedMedia()
-	if not self._createOptimizedMedia then
-		self._createOptimizedMedia = CheckBox:new(self, function()
-			return axutils.childFromTop(axutils.childrenWithRole(self:contentsUI(), "AXCheckBox"), id "CreateOptimizedMedia")
-		end)
-	end
-	return self._createOptimizedMedia
-end
-
-function ImportPanel:mediaLocationGroupUI()
-	return axutils.cache(self, "_mediaLocationGroup", function()
-		return axutils.childFromTop(axutils.childrenWithRole(self:contentsUI(), "AXRadioGroup"), id "MediaLocationGroup")
-	end)
-end
-
-function ImportPanel:copyToMediaFolder()
-	if not self._copyToMediaFolder then
-		self._copyToMediaFolder = RadioButton:new(self, function()
-			local groupUI = self:mediaLocationGroupUI()
-			return groupUI and groupUI[id "CopyToMediaFolder"]
-		end)
-	end
-	return self._copyToMediaFolder
-end
-
-function ImportPanel:leaveInPlace()
-	if not self._leaveInPlace then
-		self._leaveInPlace = RadioButton:new(self, function()
-			local groupUI = self:mediaLocationGroupUI()
-			return groupUI and groupUI[id "LeaveInPlace"]
-		end)
-	end
-	return self._leaveInPlace
-end
-
--- TODO: Add documentation
+--- cp.apple.finalcutpro.prefs.ImportPanel:toggleMediaLocation() -> boolean
+--- Method
+--- Toggles between the "Copy to library storage location" and "Leave files in place" options.
+---
+--- Parameters:
+---  * None
+---
+--- Returns:
+---  * None
 function ImportPanel:toggleMediaLocation()
-	if self:show():isShowing() then
-		if self:copyToMediaFolder():isChecked() then
-			self:leaveInPlace():check()
-		else
-			self:copyToMediaFolder():check()
-		end
-		return true
-	end
-	return false
+    if self:show():isShowing() then
+        if self:copyToLibraryStorageLocation():checked() then
+            self:leaveFilesInPlace():checked(true)
+        else
+            self:copyToLibraryStorageLocation():checked(true)
+        end
+        return true
+    end
+    return false
+end
+
+--- cp.apple.finalcutpro.prefs.ImportPanel:toggleMediaLocation() -> cp.rx.go.Statement
+--- Method
+--- A `Statement` that toggles between the "Copy to library storage location" and "Leave files in place" options.
+---
+--- Parameters:
+---  * None
+---
+--- Returns:
+---  * None
+function ImportPanel.lazy.method:doToggleMediaLocation()
+    return Do(self:doShow())
+    :Then(
+        If(self:copyToLibraryStorageLocation().checked)
+        :Then(function()
+            self:leaveFilesInPlace():checked(true)
+        end)
+        :Otherwise(function()
+            self:copyToLibraryStorageLocation():checked(true)
+        end)
+    )
+end
+
+--- cp.apple.finalcutpro.prefs.ImportPanel.keywordsFromFinderTags <cp.ui.CheckBox>
+--- Field
+--- The "Keywords from Finder tags" `CheckBox`.
+function ImportPanel.lazy.value:keywordsFromFinderTags()
+    return CheckBox(self, function()
+        return childFromTop(self:UI(), 1, CheckBox.matches)
+    end)
+end
+
+--- cp.apple.finalcutpro.prefs.ImportPanel.keywordsFromFolders <cp.ui.CheckBox>
+--- Field
+--- The "Keywords from folders" `CheckBox`.
+function ImportPanel.lazy.value:keywordsFromFolders()
+    return CheckBox(self, function()
+        return childFromTop(self:UI(), 2, CheckBox.matches)
+    end)
+end
+
+--- cp.apple.finalcutpro.prefs.ImportPanel.assignAudioRole <cp.ui.PopUpButton>
+--- Field
+--- The "Assign Role" `PopUpButton`.
+function ImportPanel.lazy.value:assignAudioRole()
+    return PopUpButton(self, function()
+        return childFromTop(self:UI(), 1, PopUpButton.matches)
+    end)
+end
+
+--- cp.apple.finalcutpro.prefs.ImportPanel.iXMLRoles <cp.ui.CheckBox>
+--- Field
+--- The "Assign iXML track names if available" `CheckBox`.
+function ImportPanel.lazy.value:iXMLRoles()
+    return CheckBox(self, function()
+        return childFromTop(self:UI(), 3, CheckBox.matches)
+    end)
+end
+
+--- cp.apple.finalcutpro.prefs.ImportPanel.createOptimizedMedia <cp.ui.CheckBox>
+--- Field
+--- The "Create optimized media" `CheckBox`.
+function ImportPanel.lazy.value:createOptimizedMedia()
+    return CheckBox(self, function()
+        return childFromTop(self:UI(), 4, CheckBox.matches)
+    end)
+end
+
+--- cp.apple.finalcutpro.prefs.ImportPanel.createProxyMedia <cp.ui.CheckBox>
+--- Field
+--- The "Create proxy media" `CheckBox`.
+function ImportPanel.lazy.value:createProxyMedia()
+    return CheckBox(self, function()
+        return childFromTop(self:UI(), 5, CheckBox.matches)
+    end)
+end
+
+--- cp.apple.finalcutpro.prefs.ImportPanel.analyzeBalanceColor <cp.ui.CheckBox>
+--- Field
+--- The "Analyze video for balance color" `CheckBox`.
+function ImportPanel.lazy.value:analyzeBalanceColor()
+    return CheckBox(self, function()
+        return childFromTop(self:UI(), 6, CheckBox.matches)
+    end)
+end
+
+--- cp.apple.finalcutpro.prefs.ImportPanel.findPeople <cp.ui.CheckBox>
+--- Field
+--- The "Find people" `CheckBox`.
+function ImportPanel.lazy.value:findPeople()
+    return CheckBox(self, function()
+        return childFromTop(self:UI(), 7, CheckBox.matches)
+    end)
+end
+
+--- cp.apple.finalcutpro.prefs.ImportPanel.findPeopleConsolidatedResults <cp.ui.CheckBox>
+--- Field
+--- The "Consolidate find people results" `CheckBox`.
+function ImportPanel.lazy.value:findPeopleConsolidatedResults()
+    return CheckBox(self, function()
+        return childFromTop(self:UI(), 8, CheckBox.matches)
+    end)
+end
+
+--- cp.apple.finalcutpro.prefs.ImportPanel.findPeopleSmartCollections <cp.ui.CheckBox>
+--- Field
+--- The "Create Smart Collections after analysis" `CheckBox`.
+function ImportPanel.lazy.value:findPeopleSmartCollections()
+    return CheckBox(self, function()
+        return childFromTop(self:UI(), 9, CheckBox.matches)
+    end)
+end
+
+--- cp.apple.finalcutpro.prefs.ImportPanel.analyzeAudioProblems <cp.ui.CheckBox>
+--- Field
+--- The "Analyze and fix audio problems" `CheckBox`.
+function ImportPanel.lazy.value:analyzeAudioProblems()
+    return CheckBox(self, function()
+        return childFromTop(self:UI(), 10, CheckBox.matches)
+    end)
+end
+
+--- cp.apple.finalcutpro.prefs.ImportPanel.separateMonoGroupStereoAudio <cp.ui.CheckBox>
+--- Field
+--- The "Separate mono and group stereo audio" `CheckBox`.
+function ImportPanel.lazy.value:separateMonoGroupStereoAudio()
+    return CheckBox(self, function()
+        return childFromTop(self:UI(), 11, CheckBox.matches)
+    end)
+end
+
+--- cp.apple.finalcutpro.prefs.ImportPanel.removeSilentChannels <cp.ui.CheckBox>
+--- Field
+--- The "Remove silent channels" `CheckBox`.
+function ImportPanel.lazy.value:removeSilentChannels()
+    return CheckBox(self, function()
+        return childFromTop(self:UI(), 12, CheckBox.matches)
+    end)
 end
 
 return ImportPanel

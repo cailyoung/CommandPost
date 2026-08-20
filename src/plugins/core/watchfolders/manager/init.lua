@@ -1,51 +1,33 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---                  W A T C H   F O L D E R    M A N A G E R                  --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === plugins.core.watchfolders.manager ===
 ---
 --- Manager for the CommandPost Watch Folders Panel.
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
+local require = require
 
---------------------------------------------------------------------------------
--- Logger:
---------------------------------------------------------------------------------
-local log                                       = require("hs.logger").new("watchMan")
+local hs            = _G.hs
 
---------------------------------------------------------------------------------
--- Hammerspoon Extensions:
---------------------------------------------------------------------------------
-local inspect                                   = require("hs.inspect")
-local screen                                    = require("hs.screen")
-local timer                                     = require("hs.timer")
-local toolbar                                   = require("hs.webview.toolbar")
-local webview                                   = require("hs.webview")
+local log           = require "hs.logger".new "watchMan"
 
---------------------------------------------------------------------------------
--- CommandPost Extensions:
---------------------------------------------------------------------------------
-local config                                    = require("cp.config")
-local dialog                                    = require("cp.dialog")
-local tools                                     = require("cp.tools")
+local inspect       = require "hs.inspect"
+local mouse         = require "hs.mouse"
+local screen        = require "hs.screen"
+local timer         = require "hs.timer"
+local toolbar       = require "hs.webview.toolbar"
+local webview       = require "hs.webview"
 
---------------------------------------------------------------------------------
--- 3rd Party Extensions:
---------------------------------------------------------------------------------
-local panel                                     = require("panel")
-local _                                         = require("moses")
+local config        = require "cp.config"
+local dialog        = require "cp.dialog"
+local tools         = require "cp.tools"
+local i18n          = require "cp.i18n"
 
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
+local panel         = require "panel"
+local moses         = require "moses"
+
+local sortedIndex   = moses.sortedIndex
+
+local doAfter       = timer.doAfter
+local waitUntil     = timer.waitUntil
+
 local mod = {}
 
 --- plugins.core.watchfolders.manager.WEBVIEW_LABEL -> string
@@ -61,7 +43,7 @@ mod.DEFAULT_WINDOW_STYLE = {"titled", "closable", "nonactivating"}
 --- plugins.core.watchfolders.manager.DEFAULT_WIDTH -> number
 --- Constant
 --- Default Width of the Watch Folder Window
-mod.DEFAULT_WIDTH = 524
+mod.DEFAULT_WIDTH = 1000
 
 --- plugins.core.watchfolders.manager.DEFAULT_HEIGHT -> number
 --- Constant
@@ -76,22 +58,22 @@ mod.DEFAULT_TITLE = i18n("watchFolders")
 -- plugins.core.watchfolders.manager._panels -> table
 -- Variable
 -- Table of Panels
-mod._panels             = {}
+mod._panels = {}
 
 -- plugins.core.watchfolders.manager._panels -> table
 -- Variable
 -- Table of Handlers
-mod._handlers           = {}
+mod._handlers = {}
 
 --- plugins.core.watchfolders.manager.position <cp.prop: table>
 --- Constant
 --- Returns the last frame saved in settings.
-mod.position = config.prop("watchFoldersPosition", nil)
+mod.position = config.prop("watchFolders.position", nil)
 
 --- plugins.core.watchfolders.manager.position <cp.prop: table>
 --- Constant
 --- Returns the last frame saved in settings.
-mod.lastTab = config.prop("watchFoldersLastTab", nil)
+mod.lastTab = config.prop("watchFolders.lastTab", nil)
 
 --- plugins.core.watchfolders.manager.getLabel() -> string
 --- Function
@@ -217,7 +199,7 @@ end
 --
 -- Returns:
 -- * Nothing
-local function windowCallback(action, webview, frame)
+local function windowCallback(action, _, frame)
     if action == "closing" then
         if not hs.shuttingDown then
             mod._webview = nil
@@ -227,14 +209,20 @@ local function windowCallback(action, webview, frame)
             local id = mod._toolbar:selectedItem()
             for _, v in ipairs(mod._panels) do
                 if v.id == id then
-                    --log.df("Executing Load Function via manager.windowCallback.")
+                    --------------------------------------------------------------------------------
+                    -- Previously we waited until the webview loaded before trigging individual
+                    -- panels functions, but this was causing issues, so have removed:
+                    --------------------------------------------------------------------------------
                     v.loadFn()
                 end
             end
         end
     elseif action == "frameChange" then
         if frame then
-            mod.position(frame)
+            mod.position({
+                x = frame.x,
+                y = frame.y,
+            })
         end
     end
 end
@@ -244,10 +232,10 @@ end
 --- Gets the maximum panel height as a number
 ---
 --- Parameters:
---- * None
+---  * None
 ---
 --- Returns:
---- * A number
+---  * A number
 function mod.maxPanelHeight()
     local max = mod.DEFAULT_HEIGHT
     for _,v in ipairs(mod._panels) do
@@ -275,18 +263,22 @@ end
 --- Initialises the preferences panel.
 ---
 --- Parameters:
---- * None
+---  * None
 ---
 --- Returns:
---- * Nothing
+---  * Nothing
 function mod.new()
 
     --------------------------------------------------------------------------------
     -- Use last Position or Centre on Screen:
     --------------------------------------------------------------------------------
-    local defaultRect = mod.position()
-    if tools.isOffScreen(defaultRect) then
-        defaultRect = centredPosition()
+    local defaultRect = centredPosition()
+    local p = mod.position()
+    if p then
+        local savedPosition = {x = p.x, y = p.y, w = mod.DEFAULT_WIDTH, h = mod.DEFAULT_HEIGHT}
+        if not tools.isOffScreen(defaultRect) then
+            defaultRect = savedPosition
+        end
     end
 
     --------------------------------------------------------------------------------
@@ -311,6 +303,7 @@ function mod.new()
     --------------------------------------------------------------------------------
     if not mod._toolbar then
         mod._toolbar = toolbar.new(mod.WEBVIEW_LABEL)
+            :toolbarStyle("preference")
             :canCustomize(true)
             :autosaves(true)
             :setCallback(function(_, _, id)
@@ -347,16 +340,20 @@ function mod.new()
 
 end
 
---- plugins.core.watchfolders.manager.show() -> boolean
+--- plugins.core.watchfolders.manager.show([panelID]) -> boolean
 --- Function
 --- Shows the Watch Folders Window
 ---
 --- Parameters:
----  * None
+---  * [panelID] - An optional panel ID
 ---
 --- Returns:
 ---  * True if successful or nil if an error occurred
-function mod.show()
+function mod.show(panelID)
+    if panelID then
+        mod.lastTab(panelID)
+    end
+
     if not mod._webview or not mod._toolbar then
         mod.new()
     end
@@ -366,7 +363,7 @@ function mod.show()
     else
         mod._webview:html(generateHTML())
         mod._webview:show()
-        timer.doAfter(0.1, function()
+        doAfter(0.1, function()
             --log.df("Attempting to bring Preferences Panel to focus.")
             mod._webview:hswindow():raise():focus()
         end)
@@ -407,12 +404,17 @@ end
 ---  * None
 function mod.injectScript(script)
     if mod._webview and mod._webview:frame() then
-        mod._webview:evaluateJavaScript(script,
-        function(_, theerror)
-            if theerror then
-                log.df("Javascript Error: %s", inspect(theerror))
-            end
-        end)
+        --------------------------------------------------------------------------------
+        -- Wait until the Webview has loaded before executing JavaScript:
+        --------------------------------------------------------------------------------
+        waitUntil(function() return not mod._webview:loading() end, function()
+            mod._webview:evaluateJavaScript(script,
+                function(_, theerror)
+                    if theerror and theerror.code ~= 0 then
+                        log.df("Javascript Error: %s\nCaused by script: %s", inspect(theerror), script)
+                    end
+                end)
+        end, 0.01)
     end
 end
 
@@ -447,12 +449,27 @@ function mod.selectPanel(id)
         -- Resize Panel:
         --------------------------------------------------------------------------------
         if v.id == id and v.height and type(v.height) == "number" and mod._webview:hswindow() and mod._webview:hswindow():isVisible() then
-            mod._webview:size({w = mod.DEFAULT_WIDTH, h = v.height })
+            --------------------------------------------------------------------------------
+            -- Make sure the panel isn't bigger than the screen:
+            --------------------------------------------------------------------------------
+            local heightWithOffset = v.height
+
+            local currentScreen = mouse.getCurrentScreen()
+            local currentFrame = currentScreen and currentScreen:frame()
+            local currentHeight = currentFrame and currentFrame.h
+
+            if heightWithOffset > currentHeight then
+                heightWithOffset = currentHeight - 10
+            end
+
+            mod._webview:size({w = mod.DEFAULT_WIDTH, h = heightWithOffset})
         end
 
         local style = v.id == id and "block" or "none"
         js = js .. [[
-            document.getElementById(']] .. v.id .. [[').style.display = ']] .. style .. [[';
+            if (document.getElementById(']] .. v.id .. [[') !== null) {
+                document.getElementById(']] .. v.id .. [[').style.display = ']] .. style .. [[';
+            }
         ]]
     end
 
@@ -508,7 +525,7 @@ function mod.addPanel(params)
     --log.df("Adding Preferences Panel with ID: %s", id)
     local newPanel = panel.new(params, mod)
 
-    local index = _.sortedIndex(mod._panels, newPanel, comparePriorities)
+    local index = sortedIndex(mod._panels, newPanel, comparePriorities)
     table.insert(mod._panels, index, newPanel)
 
     return newPanel
@@ -528,11 +545,6 @@ function mod.init(env)
     return mod
 end
 
---------------------------------------------------------------------------------
---
--- THE PLUGIN:
---
---------------------------------------------------------------------------------
 local plugin = {
     id              = "core.watchfolders.manager",
     group           = "core",
@@ -542,11 +554,7 @@ local plugin = {
     }
 }
 
---------------------------------------------------------------------------------
--- INITIALISE PLUGIN:
---------------------------------------------------------------------------------
 function plugin.init(deps, env)
-
     --------------------------------------------------------------------------------
     -- Commands:
     --------------------------------------------------------------------------------
@@ -555,8 +563,26 @@ function plugin.init(deps, env)
         :whenActivated(mod.show)
         :groupedBy("commandPost")
 
-
     return mod.init(env)
+end
+
+function plugin.postInit(deps)
+    --------------------------------------------------------------------------------
+    -- Add Commands to open individual panels:
+    --------------------------------------------------------------------------------
+    for _, v in pairs(mod._panels) do
+        local id = v.id
+        local label = v.label
+        local img = v.image
+        deps.global
+            :add("watchFolders" .. id)
+            :whenActivated(function()
+                mod.show(id)
+            end)
+            :titled(label)
+            :subtitled(i18n("watchFolders"))
+            :image(img)
+    end
 end
 
 return plugin

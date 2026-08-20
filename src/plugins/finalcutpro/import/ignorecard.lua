@@ -1,101 +1,124 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---                 I G N O R E   C A R D S   P L U G I N                      --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === plugins.finalcutpro.import.ignorecard ===
 ---
 --- Ignore Final Cut Pro's Media Import Window.
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
+local require       = require
 
---------------------------------------------------------------------------------
--- Hammerspoon Extensions:
---------------------------------------------------------------------------------
-local application               = require("hs.application")
-local fs                        = require("hs.fs")
-local timer                     = require("hs.timer")
+--local log		    = require "hs.logger".new "ignorecard"
 
---------------------------------------------------------------------------------
--- CommandPost Extensions:
---------------------------------------------------------------------------------
-local config                    = require("cp.config")
-local fcp                       = require("cp.apple.finalcutpro")
+local application   = require "hs.application"
+local fs            = require "hs.fs"
+local timer         = require "hs.timer"
 
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
+local config        = require "cp.config"
+local fcp           = require "cp.apple.finalcutpro"
+local i18n          = require "cp.i18n"
+
+local doEvery       = timer.doEvery
+local volume        = fs.volume
+
 local mod = {}
 
---- plugins.finalcutpro.import.ignorecard.getDeviceWatcher() -> none
+-- volumeWatcher -> hs.fs.volume watcher object
+-- Variable
+-- Volume Watcher
+local volumeWatcher
+
+-- mediaImportTimer -> hs.timer
+-- Variable
+-- Media Import Timer
+local mediaImportTimer
+
+-- mediaImportCount -> number
+-- Variable
+-- Media Import Counter
+local mediaImportCount
+
+-- fcpHidden -> boolean
+-- Variable
+-- Is Final Cut Pro Hidden?
+local fcpHidden
+
+--- plugins.finalcutpro.import.ignorecard.start() -> none
 --- Function
---- Media Import Window Watcher
+--- Starts the Media Import Window Watcher
 ---
 --- Parameters:
 ---  * None
 ---
 --- Returns:
----  * An `hs.fs.volume` object
-function mod.getDeviceWatcher()
-    if not mod.newDeviceMounted then
-        --log.df("Watching for new media...")
-        mod.newDeviceMounted = fs.volume.new(function(event)
-            if event == fs.volume.didMount then
+---  * None
+function mod.start()
+    if not volumeWatcher then
+        volumeWatcher = volume.new(function(event)
+            if event == volume.didMount and fcp:isRunning() and not fcp:mediaImport():isShowing() then
+                --------------------------------------------------------------------------------
+                -- Setup a timer to check for the Media Import window:
+                --------------------------------------------------------------------------------
+                fcpHidden = not fcp:isShowing()
+                mod._currentApplication = application.frontmostApplication()
+                mediaImportTimer = doEvery(0.01, function()
+                    local mediaImport = fcp:mediaImport()
+                    if mediaImport:isShowing() then
+                        --------------------------------------------------------------------------------
+                        -- Hide the Media Import Window:
+                        --------------------------------------------------------------------------------
+                        mediaImport:hide()
 
-                --log.df("Media Inserted.")
-
-                local mediaImport = fcp:mediaImport()
-
-                if mediaImport:isShowing() then
-                    -- Media Import was already open. Bail!
-                    --log.df("Already in Media Import. Continuing...")
-                    return
-                end
-
-                local mediaImportCount = 0
-                local stopMediaImportTimer = false
-                local currentApplication = application.frontmostApplication()
-                --log.df("Currently using '"..currentApplication:name().."'")
-
-                local fcpxHidden = not fcp:isShowing()
-
-                mod.mediaImportTimer = timer.doUntil(
-                    function()
-                        return stopMediaImportTimer
-                    end,
-                    function()
-                        if not fcp:isRunning() then
-                            --log.df("FCPX is not running. Stop watching.")
-                            stopMediaImportTimer = true
-                        else
-                            if mediaImport:isShowing() then
-                                mediaImport:hide()
-                                if fcpxHidden then fcp:hide() end
-                                currentApplication:activate()
-                                --log.df("Hid FCPX and returned to '"..currentApplication:name().."'.")
-                                stopMediaImportTimer = true
-                            end
-                            mediaImportCount = mediaImportCount + 1
-                            if mediaImportCount == 500 then
-                                --log.df("Gave up watching for the Media Import window after 5 seconds.")
-                                stopMediaImportTimer = true
-                            end
+                        if fcpHidden then
+                            fcp:hide()
                         end
-                    end,
-                    0.01
-                )
+                        fcpHidden = nil
 
+                        --------------------------------------------------------------------------------
+                        -- In theory, this if statement shouldn't be necessary, however some users
+                        -- have reported that the `frontmostApplication` is `nil` for whatever reason.
+                        -- See: Issue #2843
+                        --------------------------------------------------------------------------------
+                        if mod._currentApplication then
+                            mod._currentApplication:activate()
+                        end
+                        mod._currentApplication = nil
+
+                        mediaImportCount = nil
+                        mediaImportTimer:stop()
+                    end
+                    if type(mediaImportCount) ~= "number" then
+                        mediaImportCount = 0
+                    end
+                    mediaImportCount = mediaImportCount + 1
+                    if mediaImportCount == 500 then
+                        --------------------------------------------------------------------------------
+                        -- Gave up watching for the Media Import window, so cleaning up:
+                        --------------------------------------------------------------------------------
+                        fcpHidden = nil
+                        mediaImportCount = nil
+                        mod._currentApplication = nil
+                        mediaImportTimer:stop()
+                    end
+                end)
             end
-        end)
+        end):start()
     end
-    return mod.newDeviceMounted
+end
+
+--- plugins.finalcutpro.import.ignorecard.stop() -> none
+--- Function
+--- Stops the Media Import Window Watcher
+---
+--- Parameters:
+---  * None
+---
+--- Returns:
+---  * None
+function mod.stop()
+    if volumeWatcher then
+        volumeWatcher:stop()
+        volumeWatcher = nil
+        mediaImportTimer = nil
+        mediaImportCount = nil
+        fcpHidden = nil
+    end
 end
 
 --- plugins.finalcutpro.import.ignorecard.update() -> none
@@ -108,11 +131,10 @@ end
 --- Returns:
 ---  * None
 function mod.update()
-    local watcher = mod.getDeviceWatcher()
     if mod.enabled() then
-        watcher:start()
+        mod.start()
     else
-        watcher:stop()
+        mod.stop()
     end
 end
 
@@ -121,44 +143,32 @@ end
 --- Toggles the Ignore Card Plugin
 mod.enabled = config.prop("enableMediaImportWatcher", false):watch(mod.update)
 
---------------------------------------------------------------------------------
---
--- THE PLUGIN:
---
---------------------------------------------------------------------------------
 local plugin = {
     id              = "finalcutpro.import.ignorecard",
     group           = "finalcutpro",
     dependencies    = {
-        ["finalcutpro.preferences.app"] = "prefs",
+        ["finalcutpro.preferences.manager"] = "prefs",
     }
 }
 
---------------------------------------------------------------------------------
--- INITIALISE PLUGIN:
---------------------------------------------------------------------------------
 function plugin.init(deps)
+    --------------------------------------------------------------------------------
+    -- Only load plugin if FCPX is supported:
+    --------------------------------------------------------------------------------
+    if not fcp:isSupported() then return end
 
     --------------------------------------------------------------------------------
     -- Setup Menubar Preferences Panel:
     --------------------------------------------------------------------------------
-    if deps.prefs.panel then
-        deps.prefs.panel
-            --------------------------------------------------------------------------------
-            -- Add Preferences Heading:
-            --------------------------------------------------------------------------------
-            :addHeading(1, i18n("general"))
-
-            --------------------------------------------------------------------------------
-            -- Add Preferences Checkbox:
-            --------------------------------------------------------------------------------
+    local panel = deps.prefs.panel
+    if panel then
+        panel
             :addCheckbox(1.1,
             {
                 label = i18n("ignoreInsertedCameraCards"),
                 onchange = function(_, params) mod.enabled(params.checked) end,
                 checked = mod.enabled,
-            }
-        )
+            })
     end
 
     --------------------------------------------------------------------------------

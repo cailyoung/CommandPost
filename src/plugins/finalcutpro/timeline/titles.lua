@@ -1,47 +1,44 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---                   C  O  M  M  A  N  D  P  O  S  T                          --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === plugins.finalcutpro.timeline.titles ===
 ---
 --- Controls Final Cut Pro's Titles.
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
+local require   = require
 
---------------------------------------------------------------------------------
--- Hammerspoon Extensions:
---------------------------------------------------------------------------------
-local timer             = require("hs.timer")
+local log       = require "hs.logger".new "titles"
+local inspect   = require "hs.inspect"
 
---------------------------------------------------------------------------------
--- CommandPost Extensions:
---------------------------------------------------------------------------------
-local config            = require("cp.config")
-local dialog            = require("cp.dialog")
-local fcp               = require("cp.apple.finalcutpro")
-local just              = require("cp.just")
+local base64    = require "hs.base64"
+local timer     = require "hs.timer"
+local window    = require "hs.window"
 
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
+local config    = require "cp.config"
+local dialog    = require "cp.dialog"
+local fcp       = require "cp.apple.finalcutpro"
+local i18n      = require "cp.i18n"
+local json      = require "cp.json"
+local just      = require "cp.just"
+
+local doAfter   = timer.doAfter
+
 local mod = {}
 
 -- plugins.finalcutpro.timeline.titles._cache <cp.prop: table>
 -- Field
 -- Titles cache.
-mod._cache = config.prop("titlesCache", {})
+mod._cache = json.prop(config.cachePath, "Final Cut Pro", "Titles.cpCache", {})
 
 --- plugins.finalcutpro.timeline.titles.apply(action) -> boolean
 --- Function
---- Applies the specified action as a title. Expects action to be a table with the following structure:
+--- Applies the specified action as a title.
+---
+--- Parameters:
+---  * `action`      - A table with the name/category/theme for the title to apply, or a string with just the name.
+---
+--- Returns:
+---  * `true` if a matching title was found and applied to the timeline.
+---
+--- Notes:
+---  * Expects action to be a table with the following structure:
 ---
 --- ```lua
 --- { name = "XXX", category = "YYY", theme = "ZZZ" }
@@ -54,12 +51,6 @@ mod._cache = config.prop("titlesCache", {})
 ---
 --- Actions will be cached each session, so that if the user applies the effect multiple times, only the first time will require
 --- GUI scripting - subsequent uses will just use the Pasteboard.
----
---- Parameters:
----  * `action`      - A table with the name/category/theme for the title to apply, or a string with just the name.
----
---- Returns:
----  * `true` if a matching title was found and applied to the timeline.
 function mod.apply(action)
 
     --------------------------------------------------------------------------------
@@ -89,76 +80,76 @@ function mod.apply(action)
     if category then cacheID = cacheID .. "-" .. name end
 
     --------------------------------------------------------------------------------
-    -- Restore from Cache:
+    -- Restore from Cache, unless there's a range selected in the timeline:
     --------------------------------------------------------------------------------
-    if mod._cache()[cacheID] then
+    local rangeSelected = fcp.timeline:rangeSelected()
+    if not rangeSelected and mod._cache()[cacheID] then
+        --------------------------------------------------------------------------------
+        -- Stop Watching Pasteboard:
+        --------------------------------------------------------------------------------
+        local pasteboard = mod.pasteboardManager
+        pasteboard.stopWatching()
 
         --------------------------------------------------------------------------------
-        -- Stop Watching Clipboard:
+        -- Save Current Pasteboard Contents for later:
         --------------------------------------------------------------------------------
-        local clipboard = mod.clipboardManager
-        clipboard.stopWatching()
+        local originalPasteboard = pasteboard.readFCPXData()
 
         --------------------------------------------------------------------------------
-        -- Save Current Clipboard Contents for later:
+        -- Add Cached Item to Pasteboard:
         --------------------------------------------------------------------------------
-        local originalClipboard = clipboard.readFCPXData()
-
-        --------------------------------------------------------------------------------
-        -- Add Cached Item to Clipboard:
-        --------------------------------------------------------------------------------
-        local cachedItem = mod._cache()[cacheID]
-        local result = clipboard.writeFCPXData(cachedItem)
+        local cachedItem = base64.decode(mod._cache()[cacheID])
+        local result = pasteboard.writeFCPXData(cachedItem)
         if not result then
             dialog.displayErrorMessage("Failed to add the cached item to Pasteboard.")
-            clipboard.startWatching()
+            pasteboard.startWatching()
             return false
         end
 
         --------------------------------------------------------------------------------
         -- Make sure Timeline has focus:
         --------------------------------------------------------------------------------
-        local timeline = fcp:timeline()
+        local timeline = fcp.timeline
         timeline:show()
         if not timeline:isShowing() then
             dialog.displayErrorMessage("Unable to display the Timeline.")
-            clipboard.startWatching()
+            pasteboard.startWatching()
             return false
         end
 
         --------------------------------------------------------------------------------
         -- Trigger 'Paste' from Menubar:
         --------------------------------------------------------------------------------
-        local menuBar = fcp:menuBar()
+        local menuBar = fcp.menu
         if menuBar:isEnabled({"Edit", "Paste as Connected Clip"}) then
             menuBar:selectMenu({"Edit", "Paste as Connected Clip"})
         else
-            dialog.displayErrorMessage("Unable to paste Generator.")
-            clipboard.startWatching()
+            dialog.displayErrorMessage("Unable to paste Title.")
+            pasteboard.startWatching()
             return false
         end
 
         --------------------------------------------------------------------------------
-        -- Restore Clipboard:
+        -- Restore Pasteboard:
         --------------------------------------------------------------------------------
-        timer.doAfter(1, function()
+        doAfter(1, function()
 
             --------------------------------------------------------------------------------
-            -- Restore Original Clipboard Contents:
+            -- Restore Original Pasteboard Contents:
             --------------------------------------------------------------------------------
-            if originalClipboard ~= nil then
-                local v = clipboard.writeFCPXData(originalClipboard)
+            if originalPasteboard ~= nil then
+                local v = pasteboard.writeFCPXData(originalPasteboard)
                 if not v then
-                    dialog.displayErrorMessage("Failed to restore original Clipboard item.")
-                    clipboard.startWatching()
+                    dialog.displayErrorMessage("Failed to restore original Pasteboard item.")
+                    pasteboard.startWatching()
                     return false
                 end
             end
 
             --------------------------------------------------------------------------------
-            -- Start watching the Clipboard again:
+            -- Start watching the Pasteboard again:
             --------------------------------------------------------------------------------
-            clipboard.startWatching()
+            pasteboard.startWatching()
 
         end)
 
@@ -172,13 +163,13 @@ function mod.apply(action)
     --------------------------------------------------------------------------------
     -- Save the main Browser layout:
     --------------------------------------------------------------------------------
-    local browser = fcp:browser()
+    local browser = fcp.browser
     local browserLayout = browser:saveLayout()
 
     --------------------------------------------------------------------------------
     -- Get Titles Browser:
     --------------------------------------------------------------------------------
-    local generators = fcp:generators()
+    local generators = fcp.generators
     local generatorsLayout = generators:saveLayout()
 
     --------------------------------------------------------------------------------
@@ -193,7 +184,7 @@ function mod.apply(action)
     --------------------------------------------------------------------------------
     -- Make sure there's nothing in the search box:
     --------------------------------------------------------------------------------
-    generators:search():clear()
+    generators.search:clear()
 
     --------------------------------------------------------------------------------
     -- Select the Category if provided otherwise just show all:
@@ -205,12 +196,22 @@ function mod.apply(action)
     end
 
     --------------------------------------------------------------------------------
-    -- Make sure "Installed Titles" is selected:
+    -- Make sure "Installed Titles" or "Titles" (in FCP v12 or later) is selected:
     --------------------------------------------------------------------------------
-    local group = generators:group():UI()
-    local groupValue = group:attributeValue("AXValue")
-    if groupValue ~= fcp:string("PEMediaBrowserInstalledTitlesMenuItem") then
-        generators:showInstalledTitles()
+    local group = generators.group:UI()
+    if group then
+        local groupValue = group:attributeValue("AXValue")
+
+        local titlesText
+        if fcp:isFinalCutPro12OrLater() then
+            titlesText = fcp:string("FFEffectsBrowserInstalledMotionTemplatesTitles")
+        else
+            titlesText = fcp:string("PEMediaBrowserInstalledTitlesMenuItem")
+        end
+
+        if groupValue and titlesText and groupValue ~= titlesText then
+            generators:showInstalledTitles()
+        end
     end
 
     --------------------------------------------------------------------------------
@@ -218,7 +219,11 @@ function mod.apply(action)
     --------------------------------------------------------------------------------
     local currentItemsUI = generators:currentItemsUI()
     local whichItem = nil
+    local altWhichItem = nil
     for _, v in ipairs(currentItemsUI) do
+        --------------------------------------------------------------------------------
+        -- First we try "Theme - Name", if that fails, we just try "Name":
+        --------------------------------------------------------------------------------
         local title = name
         if theme then
             title = theme .. " - " .. name
@@ -226,54 +231,99 @@ function mod.apply(action)
         if v:attributeValue("AXTitle") == title then
             whichItem = v
         end
+        if v:attributeValue("AXTitle") == name then
+            altWhichItem = v
+        end
     end
     if whichItem == nil then
-        dialog.displayErrorMessage("Failed to get whichItem in plugins.finalcutpro.timeline.titles.apply.")
+        whichItem = altWhichItem
+    end
+    if whichItem == nil then
+        log.ef("Failed to get whichItem in plugins.finalcutpro.timeline.titles.apply.")
+        log.ef("action: %s", inspect(action))
+        dialog.displayErrorMessage("Something went wrong when trying to select the requested Title.")
         return false
     end
     local grid = currentItemsUI[1]:attributeValue("AXParent")
     if not grid then
-        dialog.displayErrorMessage("Failed to get grid in plugins.finalcutpro.timeline.titles.apply.")
+        log.ef("Failed to get grid in plugins.finalcutpro.timeline.titles.apply.")
+        log.ef("action: %s", inspect(action))
+        dialog.displayErrorMessage("Something went wrong when trying to select the requested Title.")
         return false
     end
 
     --------------------------------------------------------------------------------
-    -- Select the chosen Generator:
+    -- If there's a range selected, do the old fashion way:
+    --------------------------------------------------------------------------------
+    if rangeSelected then
+        --------------------------------------------------------------------------------
+        -- Apply item:
+        --------------------------------------------------------------------------------
+        generators:applyItem(whichItem)
+
+        --------------------------------------------------------------------------------
+        -- Restore Layout:
+        --------------------------------------------------------------------------------
+        doAfter(0.1, function()
+            generators:loadLayout(generatorsLayout)
+            if browserLayout then browser:loadLayout(browserLayout) end
+        end)
+
+        return
+    end
+
+    --------------------------------------------------------------------------------
+    -- Make sure the correct window has focus:
+    --------------------------------------------------------------------------------
+    local gridWindow = grid:attributeValue("AXWindow")
+    local whichWindow = gridWindow and gridWindow:asHSWindow()
+    if whichWindow then
+        whichWindow:focus()
+        just.doUntil(function()
+            return whichWindow == window.focusedWindow()
+        end)
+    else
+        dialog.displayErrorMessage("Failed to select the window that contains the Titles Browser.")
+        return false
+    end
+
+    --------------------------------------------------------------------------------
+    -- Select the chosen Title:
     --------------------------------------------------------------------------------
     grid:setAttributeValue("AXSelectedChildren", {whichItem})
     whichItem:setAttributeValue("AXFocused", true)
 
     --------------------------------------------------------------------------------
-    -- Stop Watching Clipboard:
+    -- Stop Watching Pasteboard:
     --------------------------------------------------------------------------------
-    local clipboard = mod.clipboardManager
-    clipboard.stopWatching()
+    local pasteboard = mod.pasteboardManager
+    pasteboard.stopWatching()
 
     --------------------------------------------------------------------------------
-    -- Save Current Clipboard Contents for later:
+    -- Save Current Pasteboard Contents for later:
     --------------------------------------------------------------------------------
-    local originalClipboard = clipboard.readFCPXData()
+    local originalPasteboard = pasteboard.readFCPXData()
 
     --------------------------------------------------------------------------------
     -- Trigger 'Copy' from Menubar:
     --------------------------------------------------------------------------------
-    local menuBar = fcp:menuBar()
+    local menuBar = fcp.menu
     menuBar:selectMenu({"Edit", "Copy"})
-    local newClipboard = nil
+    local newPasteboard = nil
     just.doUntil(function()
 
-        newClipboard = clipboard.readFCPXData()
+        newPasteboard = pasteboard.readFCPXData()
 
-        if newClipboard == nil then
+        if newPasteboard == nil then
             menuBar:selectMenu({"Edit", "Copy"})
             return false
         end
 
-        if originalClipboard == nil and newClipboard ~= nil then
+        if originalPasteboard == nil and newPasteboard ~= nil then
             return true
         end
 
-        if newClipboard ~= originalClipboard then
+        if newPasteboard ~= originalPasteboard then
             return true
         end
 
@@ -285,9 +335,9 @@ function mod.apply(action)
 
     end)
 
-    if newClipboard == nil then
-        dialog.displayErrorMessage("Failed to copy Generator.")
-        clipboard.startWatching()
+    if newPasteboard == nil then
+        dialog.displayErrorMessage("Failed to copy Title.")
+        pasteboard.startWatching()
         return false
     end
 
@@ -295,13 +345,13 @@ function mod.apply(action)
     -- Cache the item for faster recall next time:
     --------------------------------------------------------------------------------
     local cache = mod._cache()
-    cache[cacheID] = newClipboard
+    cache[cacheID] = base64.encode(newPasteboard)
     mod._cache(cache)
 
     --------------------------------------------------------------------------------
     -- Make sure Timeline has focus:
     --------------------------------------------------------------------------------
-    local timeline = fcp:timeline()
+    local timeline = fcp.timeline
     timeline:show()
     if not timeline:isShowing() then
         dialog.displayErrorMessage("Unable to display the Timeline.")
@@ -314,40 +364,40 @@ function mod.apply(action)
     if menuBar:isEnabled({"Edit", "Paste as Connected Clip"}) then
         menuBar:selectMenu({"Edit", "Paste as Connected Clip"})
     else
-        dialog.displayErrorMessage("Unable to paste Generator.")
-        clipboard.startWatching()
+        dialog.displayErrorMessage("Unable to paste Title.")
+        pasteboard.startWatching()
         return false
     end
 
     --------------------------------------------------------------------------------
     -- Restore Layout:
     --------------------------------------------------------------------------------
-    timer.doAfter(0.1, function()
+    doAfter(0.1, function()
         generators:loadLayout(generatorsLayout)
         if browserLayout then browser:loadLayout(browserLayout) end
     end)
 
     --------------------------------------------------------------------------------
-    -- Restore Clipboard:
+    -- Restore Pasteboard:
     --------------------------------------------------------------------------------
-    timer.doAfter(1, function()
+    doAfter(1, function()
 
         --------------------------------------------------------------------------------
-        -- Restore Original Clipboard Contents:
+        -- Restore Original Pasteboard Contents:
         --------------------------------------------------------------------------------
-        if originalClipboard ~= nil then
-            local result = clipboard.writeFCPXData(originalClipboard)
+        if originalPasteboard ~= nil then
+            local result = pasteboard.writeFCPXData(originalPasteboard)
             if not result then
-                dialog.displayErrorMessage("Failed to restore original Clipboard item.")
-                clipboard.startWatching()
+                dialog.displayErrorMessage("Failed to restore original Pasteboard item.")
+                pasteboard.startWatching()
                 return false
             end
         end
 
         --------------------------------------------------------------------------------
-        -- Start watching Clipboard again:
+        -- Start watching Pasteboard again:
         --------------------------------------------------------------------------------
-        clipboard.startWatching()
+        pasteboard.startWatching()
     end)
 
     --------------------------------------------------------------------------------
@@ -357,24 +407,21 @@ function mod.apply(action)
 
 end
 
---------------------------------------------------------------------------------
---
--- THE PLUGIN:
---
---------------------------------------------------------------------------------
 local plugin = {
     id = "finalcutpro.timeline.titles",
     group = "finalcutpro",
     dependencies = {
-        ["finalcutpro.clipboard.manager"]               = "clipboardManager",
+        ["finalcutpro.pasteboard.manager"]               = "pasteboardManager",
     }
 }
 
---------------------------------------------------------------------------------
--- INITIALISE PLUGIN:
---------------------------------------------------------------------------------
 function plugin.init(deps)
-    mod.clipboardManager = deps.clipboardManager
+    --------------------------------------------------------------------------------
+    -- Only load plugin if Final Cut Pro is supported:
+    --------------------------------------------------------------------------------
+    if not fcp:isSupported() then return end
+
+    mod.pasteboardManager = deps.pasteboardManager
     return mod
 end
 

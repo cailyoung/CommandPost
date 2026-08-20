@@ -1,99 +1,30 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---                   F I N A L    C U T    P R O    A P I                     --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === cp.ui.Alert ===
 ---
 --- Alert UI Module.
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
-local axutils						= require("cp.ui.axutils")
+local require = require
 
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
-local Alert = {}
+local axutils                       = require "cp.ui.axutils"
+local Sheet                         = require "cp.ui.Sheet"
 
--- TODO: Add documentation
-function Alert.matches(element)
-	if element then
-		return element:attributeValue("AXRole") == "AXSheet"
-	end
-	return false
-end
 
--- TODO: Add documentation
-function Alert:new(parent)
-	local o = {_parent = parent}
-	setmetatable(o, self)
-	self.__index = self
-	return o
-end
+local Alert = Sheet:subclass("cp.ui.Alert")
 
--- TODO: Add documentation
-function Alert:parent()
-	return self._parent
-end
+--- cp.ui.Alert:new(app) -> Alert
+--- Constructor
+--- Creates a new `Alert` instance. It will automatically search the parent's children for Alerts.
+---
+--- Parameters:
+---  * parent - The parent object.
+---
+--- Returns:
+---  * A new `Browser` object.
+function Alert:initialize(parent)
+    local UI = parent.UI:mutate(function(original)
+        return axutils.childMatching(original(), Alert.matches)
+    end)
 
--- TODO: Add documentation
-function Alert:app()
-	return self:parent():app()
-end
-
--- TODO: Add documentation
-function Alert:UI()
-	return axutils.cache(self, "_ui", function()
-		axutils.childMatching(self:parent():UI(), Alert.matches)
-	end,
-	Alert.matches)
-end
-
--- TODO: Add documentation
-function Alert:isShowing()
-	return self:UI() ~= nil
-end
-
--- TODO: Add documentation
-function Alert:hide()
-	self:pressCancel()
-end
-
--- TODO: Add documentation
-function Alert:pressCancel()
-	local ui = self:UI()
-	if ui then
-		local btn = ui:cancelButton()
-		if btn then
-			btn:doPress()
-		end
-	end
-	return self
-end
-
--- TODO: Add documentation
-function Alert:pressDefault()
-	local ui = self:UI()
-	if ui then
-		local btn = ui:defaultButton()
-		if btn and btn:enabled() then
-			btn:doPress()
-		end
-	end
-	return self
-end
-
--- TODO: Add documentation
-function Alert:getTitle()
-	local ui = self:UI()
-	return ui and ui:title()
+    Sheet.initialize(self, parent, UI)
 end
 
 return Alert

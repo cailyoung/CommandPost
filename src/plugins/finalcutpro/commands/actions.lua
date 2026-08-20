@@ -1,35 +1,32 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---                     C  O  M  M  A  N  D      A C T I O N                   --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === plugins.finalcutpro.commands.actions ===
 ---
 --- An `action` which will execute a command with matching group/id values.
 --- Registers itself with the `core.action.manager`.
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
+local require           = require
 
---------------------------------------------------------------------------------
--- CommandPost Extensions:
---------------------------------------------------------------------------------
-local dialog            = require("cp.dialog")
+local image             = require "hs.image"
 
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
+local dialog            = require "cp.dialog"
+local fcp               = require "cp.apple.finalcutpro"
+local i18n              = require "cp.i18n"
+local tools             = require "cp.tools"
+
+local displayMessage    = dialog.displayMessage
+local format            = string.format
+local iconFallback      = tools.iconFallback
+local imageFromPath     = image.imageFromPath
+
 local mod = {}
 
-local format = string.format
-
+-- ID -> string
+-- Constant
+-- Commands ID
 local ID = "cmds"
+
+-- GROUP -> string
+-- Constant
+-- Group ID
 local GROUP = "fcpx"
 
 --- plugins.finalcutpro.commands.actions.init(actionmanager, cmds) -> none
@@ -53,39 +50,46 @@ function mod.init(actionmanager, cmds)
         :onActionId(mod.getId)
 
     --------------------------------------------------------------------------------
-    -- Watch for any aditional commands added after this point...
+    -- Watch for any additional commands added after this point...
     --------------------------------------------------------------------------------
     cmds:watch({
         add     = function() mod._handler:reset() end
     })
-
 end
 
---- plugins.finalcutpro.commands.actionss.onChoices(choices) -> none
+--- plugins.finalcutpro.commands.actions.onChoices(choices) -> none
 --- Function
 --- Adds available choices to the  selection.
 ---
 --- Parameters:
---- * `choices` - The `cp.choices` to add choices to.
+---  * `choices` - The `cp.choices` to add choices to.
 ---
 --- Returns:
---- * None
+---  * None
 function mod.onChoices(choices)
+    local icon = imageFromPath(iconFallback(fcp:getPath() .. "/Contents/Resources/Final Cut.icns", fcp:getPath() .. "/Contents/Resources/AppIcon.icns"))
     for _,cmd in pairs(mod._cmds:getAll()) do
         local title = cmd:getTitle()
         if title then
+            local subtext
             local group = cmd:getSubtitle()
             if not group and cmd:getGroup() then
                 group = i18n(cmd:getGroup().."_group")
+                if group then
+                    subtext = i18n("category") .. ": " .. group
+                end
             end
-            group = group or ""
+            if not subtext then
+                subtext = group
+            end
             local action = {
                 id      = cmd:id(),
             }
             choices:add(title)
-                :subText(i18n("commandChoiceSubText", {group = group}))
+                :subText(subtext)
                 :params(action)
                 :id(mod.getId(action))
+                :image(cmd:getImage() or icon) -- Default to the FCPX icon if nothing else supplied.
         end
     end
 end
@@ -95,10 +99,10 @@ end
 --- Gets the ID from an action.
 ---
 --- Parameters:
---- * action - The action table.
+---  * action - The action table.
 ---
 --- Returns:
---- * The ID as a string.
+---  * The ID as a string.
 function mod.getId(action)
     return format("%s:%s", ID, action.id)
 end
@@ -108,10 +112,10 @@ end
 --- Executes the action with the provided parameters.
 ---
 --- Parameters:
---- * `action`  - A table representing the action, matching the following:
----     * `id`      - The specific Command ID within the group.
+---  * `action`  - A table representing the action
 ---
---- * `true` if the action was executed successfully.
+--- Returns:
+---  * `true` if successful otherwise `false`
 function mod.onExecute(action)
     local group = mod._cmds
     if group then
@@ -120,7 +124,7 @@ function mod.onExecute(action)
             --------------------------------------------------------------------------------
             -- No command ID provided:
             --------------------------------------------------------------------------------
-            dialog.displayMessage(i18n("cmdIdMissingError"))
+            displayMessage(i18n("cmdIdMissingError"))
             return false
         end
         local cmd = group:get(cmdId)
@@ -128,16 +132,15 @@ function mod.onExecute(action)
             --------------------------------------------------------------------------------
             -- No matching command:
             --------------------------------------------------------------------------------
-            dialog.displayMessage(i18n("cmdDoesNotExistError"), {id = cmdId})
+            displayMessage(i18n("cmdDoesNotExistError", {id = cmdId}))
             return false
         end
-
         --------------------------------------------------------------------------------
         -- Ensure the command group is active:
         --------------------------------------------------------------------------------
         group:activate(
-            function() cmd:activated() end,
-            function() dialog.displayMessage(i18n("cmdGroupNotActivated"), {id = group.id}) end
+            function() cmd:pressed() end,
+            function() displayMessage(i18n("cmdGroupNotActivated", {id = group.id})) end
         )
         return true
     end
@@ -149,32 +152,29 @@ end
 --- Resets the set of choices.
 ---
 --- Parameters:
---- * None
+---  * None
 ---
 --- Returns:
---- * Nothing
+---  * Nothing
 function mod.reset()
     mod._handler:reset()
 end
 
---------------------------------------------------------------------------------
---
--- THE PLUGIN:
---
---------------------------------------------------------------------------------
 local plugin = {
     id              = "finalcutpro.commands.actions",
     group           = "finalcutpro",
     dependencies    = {
         ["core.action.manager"]     = "actionmanager",
-        ["finalcutpro.commands"]            = "cmds",
+        ["finalcutpro.commands"]    = "cmds",
     }
 }
 
---------------------------------------------------------------------------------
--- INITIALISE PLUGIN:
---------------------------------------------------------------------------------
 function plugin.init(deps)
+    --------------------------------------------------------------------------------
+    -- Only load plugin if FCPX is supported:
+    --------------------------------------------------------------------------------
+    if not fcp:isSupported() then return end
+
     mod.init(deps.actionmanager, deps.cmds)
     return mod
 end

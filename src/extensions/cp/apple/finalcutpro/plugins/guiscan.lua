@@ -1,12 +1,24 @@
-local log					= require("hs.logger").new("guiscan")
+--- === cp.apple.finalcutpro.plugins.guiscan ===
+---
+--- Final Cut Pro GUI Plugin Scanner.
+---
+---  **Usage:**
+--- ```lua
+--- require("cp.apple.finalcutpro.plugins.guiscan").checkAllPlugins()
+--- require("cp.apple.finalcutpro.plugins.guiscan").checkAllPluginsInAllLanguages()
+--- ```
 
-local dialog				= require("cp.dialog")
-local fcp					= require("cp.apple.finalcutpro")
-local plugins				= require("cp.apple.finalcutpro.plugins")
-local just					= require("cp.just")
+local require = require
 
-local insert, remove		= table.insert, table.remove
-local format				= string.format
+local log                   = require("hs.logger").new("guiscan")
+
+local dialog                = require("cp.dialog")
+local fcp                   = require("cp.apple.finalcutpro")
+local i18n                  = require("cp.i18n")
+local plugins               = require("cp.apple.finalcutpro.plugins")
+
+local openConsole           = _G.hs.openConsole
+
 
 local mod = {}
 
@@ -21,80 +33,80 @@ local mod = {}
 -- * The table of video effect names, or `nil` if there was a problem.
 local function scanVideoEffects()
 
-	--------------------------------------------------------------------------------
-	-- Make sure Final Cut Pro is active:
-	--------------------------------------------------------------------------------
-	fcp:launch()
+    --------------------------------------------------------------------------------
+    -- Make sure Final Cut Pro is active:
+    --------------------------------------------------------------------------------
+    fcp:launch(10)
 
-	--------------------------------------------------------------------------------
-	-- Make sure Effects panel is open:
-	--------------------------------------------------------------------------------
-	local effects = fcp:effects()
-	local effectsShowing = effects:isShowing()
-	if not effects:show():isShowing() then
-		dialog.displayErrorMessage("Unable to activate the Effects panel.")
-		return nil
-	end
+    --------------------------------------------------------------------------------
+    -- Make sure Effects panel is open:
+    --------------------------------------------------------------------------------
+    local effects = fcp.effects
+    local effectsShowing = effects:isShowing()
+    if not effects:show():isShowing() then
+        dialog.displayErrorMessage("Unable to activate the Effects panel.")
+        return nil
+    end
 
-	local effectsLayout = effects:saveLayout()
+    local effectsLayout = effects:saveLayout()
 
-	--------------------------------------------------------------------------------
-	-- Make sure "Installed Effects" is selected:
-	--------------------------------------------------------------------------------
-	effects:showInstalledEffects()
+    --------------------------------------------------------------------------------
+    -- Make sure "Installed Effects" is selected:
+    --------------------------------------------------------------------------------
+    effects:showInstalledEffects()
 
-	--------------------------------------------------------------------------------
-	-- Make sure there's nothing in the search box:
-	--------------------------------------------------------------------------------
-	effects:search():clear()
+    --------------------------------------------------------------------------------
+    -- Make sure there's nothing in the search box:
+    --------------------------------------------------------------------------------
+    effects.search:clear()
 
-	local sidebar = effects:sidebar()
+    local sidebar = effects.sidebar
 
-	--------------------------------------------------------------------------------
-	-- Ensure the sidebar is visible
-	--------------------------------------------------------------------------------
-	effects:showSidebar()
+    --------------------------------------------------------------------------------
+    -- Ensure the sidebar is visible
+    --------------------------------------------------------------------------------
+    effects:showSidebar()
 
-	--------------------------------------------------------------------------------
-	-- If it's still invisible, we have a problem.
-	--------------------------------------------------------------------------------
-	if not sidebar:isShowing() then
-		dialog.displayErrorMessage("Unable to activate the Effects sidebar.")
-		return nil
-	end
+    --------------------------------------------------------------------------------
+    -- If it's still invisible, we have a problem.
+    --------------------------------------------------------------------------------
+    if not sidebar:isShowing() then
+        dialog.displayErrorMessage("Unable to activate the Effects sidebar.")
+        return nil
+    end
 
-	--------------------------------------------------------------------------------
-	-- Click 'All Video':
-	--------------------------------------------------------------------------------
-	if not effects:showAllVideoEffects() then
-		dialog.displayErrorMessage("Unable to select all video effects.")
-		return nil
-	end
+    --------------------------------------------------------------------------------
+    -- Click 'All Video':
+    --------------------------------------------------------------------------------
+    if not effects:showAllVideoEffects() then
+        dialog.displayErrorMessage("Unable to select all video effects.")
+        return nil
+    end
 
-	--------------------------------------------------------------------------------
-	-- Get list of All Video Effects:
-	--------------------------------------------------------------------------------
-	local effectsList = effects:getCurrentTitles()
-	if not effectsList then
-		dialog.displayErrorMessage("Unable to get list of all effects.")
-		return nil
-	end
+    --------------------------------------------------------------------------------
+    -- Get list of All Video Effects:
+    --------------------------------------------------------------------------------
+    local effectsList = effects:getCurrentTitles()
+    if not effectsList then
+        dialog.displayErrorMessage("Unable to get list of all effects.")
+        return nil
+    end
 
-	--------------------------------------------------------------------------------
-	-- Restore Effects:
-	--------------------------------------------------------------------------------
-	effects:loadLayout(effectsLayout)
-	if not effectsShowing then effects:hide() end
+    --------------------------------------------------------------------------------
+    -- Restore Effects:
+    --------------------------------------------------------------------------------
+    effects:loadLayout(effectsLayout)
+    if not effectsShowing then effects:hide() end
 
-	--------------------------------------------------------------------------------
-	-- All done!
-	--------------------------------------------------------------------------------
-	if #effectsList == 0 then
-		dialog.displayMessage(i18n("updateEffectsListFailed") .. "\n\n" .. i18n("pleaseTryAgain"))
-		return nil
-	else
-		return effectsList
-	end
+    --------------------------------------------------------------------------------
+    -- All done!
+    --------------------------------------------------------------------------------
+    if #effectsList == 0 then
+        dialog.displayMessage(i18n("updateEffectsListFailed") .. "\n\n" .. i18n("pleaseTryAgain"))
+        return nil
+    else
+        return effectsList
+    end
 end
 
 -- scanAudioEffects() -> table
@@ -108,80 +120,80 @@ end
 -- * The table of audio effect names, or `nil` if there was a problem.
 local function scanAudioEffects()
 
-	--------------------------------------------------------------------------------
-	-- Make sure Final Cut Pro is active:
-	--------------------------------------------------------------------------------
-	fcp:launch()
+    --------------------------------------------------------------------------------
+    -- Make sure Final Cut Pro is active:
+    --------------------------------------------------------------------------------
+    fcp:launch(10)
 
-	--------------------------------------------------------------------------------
-	-- Make sure Effects panel is open:
-	--------------------------------------------------------------------------------
-	local effects = fcp:effects()
-	local effectsShowing = effects:isShowing()
-	if not effects:show():isShowing() then
-		dialog.displayErrorMessage("Unable to activate the Effects panel.")
-		return nil
-	end
+    --------------------------------------------------------------------------------
+    -- Make sure Effects panel is open:
+    --------------------------------------------------------------------------------
+    local effects = fcp.effects
+    local effectsShowing = effects:isShowing()
+    if not effects:show():isShowing() then
+        dialog.displayErrorMessage("Unable to activate the Effects panel.")
+        return nil
+    end
 
-	local effectsLayout = effects:saveLayout()
+    local effectsLayout = effects:saveLayout()
 
-	--------------------------------------------------------------------------------
-	-- Make sure "Installed Effects" is selected:
-	--------------------------------------------------------------------------------
-	effects:showInstalledEffects()
+    --------------------------------------------------------------------------------
+    -- Make sure "Installed Effects" is selected:
+    --------------------------------------------------------------------------------
+    effects:showInstalledEffects()
 
-	--------------------------------------------------------------------------------
-	-- Make sure there's nothing in the search box:
-	--------------------------------------------------------------------------------
-	effects:search():clear()
+    --------------------------------------------------------------------------------
+    -- Make sure there's nothing in the search box:
+    --------------------------------------------------------------------------------
+    effects.search:clear()
 
-	local sidebar = effects:sidebar()
+    local sidebar = effects.sidebar
 
-	--------------------------------------------------------------------------------
-	-- Ensure the sidebar is visible
-	--------------------------------------------------------------------------------
-	effects:showSidebar()
+    --------------------------------------------------------------------------------
+    -- Ensure the sidebar is visible
+    --------------------------------------------------------------------------------
+    effects:showSidebar()
 
-	--------------------------------------------------------------------------------
-	-- If it's still invisible, we have a problem.
-	--------------------------------------------------------------------------------
-	if not sidebar:isShowing() then
-		dialog.displayErrorMessage("Unable to activate the Effects sidebar.")
-		return nil
-	end
+    --------------------------------------------------------------------------------
+    -- If it's still invisible, we have a problem.
+    --------------------------------------------------------------------------------
+    if not sidebar:isShowing() then
+        dialog.displayErrorMessage("Unable to activate the Effects sidebar.")
+        return nil
+    end
 
-	--------------------------------------------------------------------------------
-	-- Click 'All Audio':
-	--------------------------------------------------------------------------------
-	if not effects:showAllAudioEffects() then
-		dialog.displayErrorMessage("Unable to select all audio effects.")
-		return nil
-	end
+    --------------------------------------------------------------------------------
+    -- Click 'All Audio':
+    --------------------------------------------------------------------------------
+    if not effects:showAllAudioEffects() then
+        dialog.displayErrorMessage("Unable to select all audio effects.")
+        return nil
+    end
 
-	--------------------------------------------------------------------------------
-	-- Get list of All Video Effects:
-	--------------------------------------------------------------------------------
-	local effectsList = effects:getCurrentTitles()
-	if not effectsList then
-		dialog.displayErrorMessage("Unable to get list of all effects.")
-		return nil
-	end
+    --------------------------------------------------------------------------------
+    -- Get list of All Video Effects:
+    --------------------------------------------------------------------------------
+    local effectsList = effects:getCurrentTitles()
+    if not effectsList then
+        dialog.displayErrorMessage("Unable to get list of all effects.")
+        return nil
+    end
 
-	--------------------------------------------------------------------------------
-	-- Restore Effects:
-	--------------------------------------------------------------------------------
-	effects:loadLayout(effectsLayout)
-	if not effectsShowing then effects:hide() end
+    --------------------------------------------------------------------------------
+    -- Restore Effects:
+    --------------------------------------------------------------------------------
+    effects:loadLayout(effectsLayout)
+    if not effectsShowing then effects:hide() end
 
-	--------------------------------------------------------------------------------
-	-- All done!
-	--------------------------------------------------------------------------------
-	if #effectsList == 0 then
-		dialog.displayMessage(i18n("updateEffectsListFailed") .. "\n\n" .. i18n("pleaseTryAgain"))
-		return nil
-	else
-		return effectsList
-	end
+    --------------------------------------------------------------------------------
+    -- All done!
+    --------------------------------------------------------------------------------
+    if #effectsList == 0 then
+        dialog.displayMessage(i18n("updateEffectsListFailed") .. "\n\n" .. i18n("pleaseTryAgain"))
+        return nil
+    else
+        return effectsList
+    end
 end
 
 -- scanTransitions() -> table
@@ -195,353 +207,279 @@ end
 -- * The table of transition names, or `nil` if there was a problem.
 local function scanTransitions()
 
-	--------------------------------------------------------------------------------
-	-- Make sure Final Cut Pro is active:
-	--------------------------------------------------------------------------------
-	fcp:launch()
+    --------------------------------------------------------------------------------
+    -- Make sure Final Cut Pro is active:
+    --------------------------------------------------------------------------------
+    fcp:launch(10)
 
-	--------------------------------------------------------------------------------
-	-- Save the layout of the Effects panel, in case we switch away...
-	--------------------------------------------------------------------------------
-	local effects = fcp:effects()
-	local effectsLayout = nil
-	if effects:isShowing() then
-		effectsLayout = effects:saveLayout()
-	end
+    --------------------------------------------------------------------------------
+    -- Save the layout of the Effects panel, in case we switch away...
+    --------------------------------------------------------------------------------
+    local effects = fcp.effects
+    local effectsLayout = nil
+    if effects:isShowing() then
+        effectsLayout = effects:saveLayout()
+    end
 
-	--------------------------------------------------------------------------------
-	-- Make sure Transitions panel is open:
-	--------------------------------------------------------------------------------
-	local transitions = fcp:transitions()
-	local transitionsShowing = transitions:isShowing()
-	if not transitions:show():isShowing() then
-		dialog.displayErrorMessage("Unable to activate the Transitions panel.")
-		return nil
-	end
+    --------------------------------------------------------------------------------
+    -- Make sure Transitions panel is open:
+    --------------------------------------------------------------------------------
+    local transitions = fcp.transitions
+    local transitionsShowing = transitions:isShowing()
+    if not transitions:show():isShowing() then
+        dialog.displayErrorMessage("Unable to activate the Transitions panel.")
+        return nil
+    end
 
-	local transitionsLayout = transitions:saveLayout()
+    local transitionsLayout = transitions:saveLayout()
 
-	--------------------------------------------------------------------------------
-	-- Make sure "Installed Transitions" is selected:
-	--------------------------------------------------------------------------------
-	transitions:showInstalledTransitions()
+    --------------------------------------------------------------------------------
+    -- Make sure "Installed Transitions" is selected:
+    --------------------------------------------------------------------------------
+    transitions:showInstalledTransitions()
 
-	--------------------------------------------------------------------------------
-	-- Make sure there's nothing in the search box:
-	--------------------------------------------------------------------------------
-	transitions:search():clear()
+    --------------------------------------------------------------------------------
+    -- Make sure there's nothing in the search box:
+    --------------------------------------------------------------------------------
+    transitions.search:clear()
 
-	--------------------------------------------------------------------------------
-	-- Make sure the sidebar is visible:
-	--------------------------------------------------------------------------------
-	local sidebar = transitions:sidebar()
+    --------------------------------------------------------------------------------
+    -- Make sure the sidebar is visible:
+    --------------------------------------------------------------------------------
+    local sidebar = transitions.sidebar
 
-	transitions:showSidebar()
+    transitions:showSidebar()
 
-	if not sidebar:isShowing() then
-		dialog.displayErrorMessage("Unable to activate the Transitions sidebar.")
-		return nil
-	end
+    if not sidebar:isShowing() then
+        dialog.displayErrorMessage("Unable to activate the Transitions sidebar.")
+        return nil
+    end
 
-	--------------------------------------------------------------------------------
-	-- Click 'All' in the sidebar:
-	--------------------------------------------------------------------------------
-	transitions:showAllTransitions()
+    --------------------------------------------------------------------------------
+    -- Click 'All' in the sidebar:
+    --------------------------------------------------------------------------------
+    transitions:showAllTransitions()
 
-	--------------------------------------------------------------------------------
-	-- Get list of All Transitions:
-	--------------------------------------------------------------------------------
-	local allTransitions = transitions:getCurrentTitles()
+    --------------------------------------------------------------------------------
+    -- Get list of All Transitions:
+    --------------------------------------------------------------------------------
+    local allTransitions = transitions:getCurrentTitles()
 
-	--------------------------------------------------------------------------------
-	-- Restore Effects and Transitions Panels:
-	--------------------------------------------------------------------------------
-	transitions:loadLayout(transitionsLayout)
-	if effectsLayout then effects:loadLayout(effectsLayout) end
-	if not transitionsShowing then transitions:hide() end
+    --------------------------------------------------------------------------------
+    -- Restore Effects and Transitions Panels:
+    --------------------------------------------------------------------------------
+    transitions:loadLayout(transitionsLayout)
+    if effectsLayout then effects:loadLayout(effectsLayout) end
+    if not transitionsShowing then transitions:hide() end
 
-	--------------------------------------------------------------------------------
-	-- Return results:
-	--------------------------------------------------------------------------------
-	return  allTransitions
+    --------------------------------------------------------------------------------
+    -- Return results:
+    --------------------------------------------------------------------------------
+    return allTransitions
 end
 
---------------------------------------------------------------------------------
--- GET LIST OF GENERATORS:
---------------------------------------------------------------------------------
+-- scanGenerators() -> table
+-- Function
+-- Scans the list of generators in the FCPX GUI and returns it as a list.
+--
+-- Parameters:
+-- * None
+--
+-- Returns:
+-- * The table of generator names, or `nil` if there was a problem.
 local function scanGenerators()
 
-	--------------------------------------------------------------------------------
-	-- Make sure Final Cut Pro is active:
-	--------------------------------------------------------------------------------
-	fcp:launch()
+    --------------------------------------------------------------------------------
+    -- Make sure Final Cut Pro is active:
+    --------------------------------------------------------------------------------
+    fcp:launch(10)
 
-	local generators = fcp:generators()
+    local generators = fcp.generators
 
-	local browserLayout = fcp:browser():saveLayout()
+    local browserLayout = fcp.browser:saveLayout()
 
-	--------------------------------------------------------------------------------
-	-- Make sure Generators and Generators panel is open:
-	--------------------------------------------------------------------------------
-	if not generators:show():isShowing() then
-		dialog.displayErrorMessage("Unable to activate the Generators and Generators panel.")
-		return nil
-	end
+    --------------------------------------------------------------------------------
+    -- Make sure Generators and Generators panel is open:
+    --------------------------------------------------------------------------------
+    if not generators:show():isShowing() then
+        dialog.displayErrorMessage("Unable to activate the Generators and Generators panel.")
+        return nil
+    end
 
-	--------------------------------------------------------------------------------
-	-- Make sure there's nothing in the search box:
-	--------------------------------------------------------------------------------
-	generators:search():clear()
+    --------------------------------------------------------------------------------
+    -- Make sure there's nothing in the search box:
+    --------------------------------------------------------------------------------
+    generators.search:clear()
 
-	--------------------------------------------------------------------------------
-	-- Click 'Generators':
-	--------------------------------------------------------------------------------
-	generators:showAllGenerators()
+    --------------------------------------------------------------------------------
+    -- Click 'Generators':
+    --------------------------------------------------------------------------------
+    generators:showAllGenerators()
 
-	--------------------------------------------------------------------------------
-	-- Make sure "Installed Generators" is selected:
-	--------------------------------------------------------------------------------
-	generators:group():selectItem(1)
+    --------------------------------------------------------------------------------
+    -- Make sure "Installed Generators" is selected:
+    --------------------------------------------------------------------------------
+    generators.group:selectItem(1)
 
-	--------------------------------------------------------------------------------
-	-- Get list of All Transitions:
-	--------------------------------------------------------------------------------
-	local effectsList = generators:contents():childrenUI()
-	local allGenerators = {}
-	if effectsList ~= nil then
-		for i=1, #effectsList do
-			allGenerators[i] = effectsList[i]:attributeValue("AXTitle")
-		end
-	else
-		dialog.displayErrorMessage("Unable to get list of all generators.")
-		return nil
-	end
+    --------------------------------------------------------------------------------
+    -- Get list of All Transitions:
+    --------------------------------------------------------------------------------
+    local effectsList = generators.contents:childrenUI()
+    local allGenerators = {}
+    if effectsList ~= nil then
+        for i=1, #effectsList do
+            allGenerators[i] = effectsList[i]:attributeValue("AXTitle")
+        end
+    else
+        dialog.displayErrorMessage("Unable to get list of all generators.")
+        return nil
+    end
 
-	--------------------------------------------------------------------------------
-	-- Restore Effects or Transitions Panel:
-	--------------------------------------------------------------------------------
-	fcp:browser():loadLayout(browserLayout)
+    --------------------------------------------------------------------------------
+    -- Restore Effects or Transitions Panel:
+    --------------------------------------------------------------------------------
+    fcp.browser:loadLayout(browserLayout)
 
-	--------------------------------------------------------------------------------
-	-- Return the results:
-	--------------------------------------------------------------------------------
-	return allGenerators
+    --------------------------------------------------------------------------------
+    -- Return the results:
+    --------------------------------------------------------------------------------
+    return allGenerators
 end
 
+-- scanTitles() -> table
+-- Function
+-- Scans the list of titles in the FCPX GUI and returns it as a list.
+--
+-- Parameters:
+-- * None
+--
+-- Returns:
+-- * The table of titles names, or `nil` if there was a problem.
 local function scanTitles()
 
-	--------------------------------------------------------------------------------
-	-- Make sure Final Cut Pro is active:
-	--------------------------------------------------------------------------------
-	fcp:launch()
+    --------------------------------------------------------------------------------
+    -- Make sure Final Cut Pro is active:
+    --------------------------------------------------------------------------------
+    fcp:launch(10)
 
-	local generators = fcp:generators()
+    local generators = fcp.generators
 
-	local browserLayout = fcp:browser():saveLayout()
+    local browserLayout = fcp.browser:saveLayout()
 
-	--------------------------------------------------------------------------------
-	-- Make sure Titles and Generators panel is open:
-	--------------------------------------------------------------------------------
-	if not generators:show():isShowing() then
-		dialog.displayErrorMessage("Unable to activate the Titles and Generators panel.")
-		return nil
-	end
+    --------------------------------------------------------------------------------
+    -- Make sure Titles and Generators panel is open:
+    --------------------------------------------------------------------------------
+    if not generators:show():isShowing() then
+        dialog.displayErrorMessage("Unable to activate the Titles and Generators panel.")
+        return nil
+    end
 
-	--------------------------------------------------------------------------------
-	-- Make sure there's nothing in the search box:
-	--------------------------------------------------------------------------------
-	generators:search():clear()
+    --------------------------------------------------------------------------------
+    -- Make sure there's nothing in the search box:
+    --------------------------------------------------------------------------------
+    generators.search:clear()
 
-	--------------------------------------------------------------------------------
-	-- Click 'Titles':
-	--------------------------------------------------------------------------------
-	generators:showAllTitles()
+    --------------------------------------------------------------------------------
+    -- Click 'Titles':
+    --------------------------------------------------------------------------------
+    generators:showAllTitles()
 
-	--------------------------------------------------------------------------------
-	-- Make sure "Installed Titles" is selected:
-	--------------------------------------------------------------------------------
-	generators:group():selectItem(1)
+    --------------------------------------------------------------------------------
+    -- Make sure "Installed Titles" is selected:
+    --------------------------------------------------------------------------------
+    generators.group:selectItem(1)
 
-	--------------------------------------------------------------------------------
-	-- Get list of All Transitions:
-	--------------------------------------------------------------------------------
-	local effectsList = generators:contents():childrenUI()
-	local allTitles = {}
-	if effectsList ~= nil then
-		for i=1, #effectsList do
-			allTitles[i] = effectsList[i]:attributeValue("AXTitle")
-		end
-	else
-		dialog.displayErrorMessage("Unable to get list of all titles.")
-		return nil
-	end
+    --------------------------------------------------------------------------------
+    -- Get list of All Transitions:
+    --------------------------------------------------------------------------------
+    local effectsList = generators.contents:childrenUI()
+    local allTitles = {}
+    if effectsList ~= nil then
+        for i=1, #effectsList do
+            allTitles[i] = effectsList[i]:attributeValue("AXTitle")
+        end
+    else
+        dialog.displayErrorMessage("Unable to get list of all titles.")
+        return nil
+    end
 
-	--------------------------------------------------------------------------------
-	-- Restore Effects or Transitions Panel:
-	--------------------------------------------------------------------------------
-	fcp:browser():loadLayout(browserLayout)
+    --------------------------------------------------------------------------------
+    -- Restore Effects or Transitions Panel:
+    --------------------------------------------------------------------------------
+    fcp.browser:loadLayout(browserLayout)
 
-	return allTitles
+    return allTitles
 end
 
--- cp.apple.finalcutpro.plugins.guiscan.check([language]) -> boolean, string
+-- cp.apple.finalcutpro.plugins.guiscan.checkAllPlugins([locale]) -> none
 -- Function
 -- Compares the list of plugins created via file scanning to that produced by GUI scanning.
 -- A detailed report is output in the Error Log.
 --
 -- Parameters:
---  * `language`	- The language to scan in. Defaults the the current FCPX language.
+--  * language - The language to scan. Defaults to the current Final Cut Pro language.
 --
 -- Returns:
---  * `true` if all plugins match.
---  * The text value of the report.
-function mod.check(language)
+--  * None
+function mod.checkAllPlugins(locale)
+    locale = locale or fcp.app:currentLocale()
 
-	language = language or fcp:currentLanguage()
+    fcp.app.currentLocale:set(locale)
+    fcp:launch(10)
 
-	local value = ""
-	function ln(str, ...) value = value .. format(str, ...) .. "\n" end
+    local pluginScanners = {
+        [plugins.types.audioEffect] = scanAudioEffects,
+        [plugins.types.videoEffect] = scanVideoEffects,
+        [plugins.types.transition]  = scanTransitions,
+        [plugins.types.generator]   = scanGenerators,
+        [plugins.types.title]       = scanTitles,
+    }
 
-	fcp.currentLanguage:set(language)
-	fcp:launch()
-	just.doUntil(function() return fcp:isFrontmost() end, 20, 0.1)
+    log.df("Comparing the GUI values to what we have in the Plugin Cache.")
 
-	--------------------------------------------------------------------------------
-	-- Debug Message:
-	--------------------------------------------------------------------------------
-	ln("\n---------------------------------------------------------")
-	ln(" COMPARING PLUGIN FILE SCAN RESULTS TO GUI SCAN RESULTS:")
-	ln("---------------------------------------------------------\n")
-
-	--------------------------------------------------------------------------------
-	-- Plugin Types:
-	--------------------------------------------------------------------------------
-	local pluginScanners = {
-		[plugins.types.audioEffect] = scanAudioEffects,
-		[plugins.types.videoEffect] = scanVideoEffects,
-		[plugins.types.transition]	= scanTransitions,
-		[plugins.types.generator]	= scanGenerators,
-		[plugins.types.title]		= scanTitles,
-	}
-
-	--------------------------------------------------------------------------------
-	-- Begin Scan:
-	--------------------------------------------------------------------------------
-	--------------------------------------------------------------------------------
-	-- Debug Message:
-	--------------------------------------------------------------------------------
-	ln("---------------------------------------------------------")
-	ln(" CHECKING LANGUAGE: %s", language)
-	ln("---------------------------------------------------------")
-
-	local failed = false
-
-	for newType,scanner in pairs(pluginScanners) do
-		--------------------------------------------------------------------------------
-		-- Get settings from GUI Scripting Results:
-		--------------------------------------------------------------------------------
-		local oldPlugins = scanner(language)
-
-		if oldPlugins then
-
-			--------------------------------------------------------------------------------
-			-- Debug Message:
-			--------------------------------------------------------------------------------
-			ln("  - Checking Plugin Type: %s", newType)
-
-			local newPlugins = fcp:plugins():ofType(newType, language)
-			local newPluginNames = {}
-			if newPlugins then
-				for _,plugin in ipairs(newPlugins) do
-					local name = plugin.name
-					local plugins = newPluginNames[name]
-					local unmatched = nil
-					if not plugins then
-						plugins = {
-							matched = {},
-							unmatched = {},
-							partials = {},
-						}
-						newPluginNames[name] = plugins
-					end
-					insert(plugins.unmatched, plugin)
-				end
-			end
-
-			--------------------------------------------------------------------------------
-			-- Compare Results:
-			--------------------------------------------------------------------------------
-			local errorCount = 0
-			for _, oldFullName in pairs(oldPlugins) do
-				local oldTheme, oldName = string.match(oldFullName, "^(.-) %- (.+)$")
-				oldName = oldName or oldFullName
-				local newPlugins = newPluginNames[oldFullName] or newPluginNames[oldName]
-				if not newPlugins then
-					ln("  - ERROR: Missing %s: %s", oldType, oldFullName)
-					errorCount = errorCount + 1
-				else
-					local unmatched = newPlugins.unmatched
-					local found = false
-					for i,plugin in ipairs(unmatched) do
-						-- ln("  - INFO:  Checking plugin: %s (%s)", plugin.name, plugin.theme)
-						if plugin.theme == oldTheme then
-							-- ln("  - INFO:  Exact match for plugin: %s (%s)", oldName, oldTheme)
-							insert(newPlugins.matched, plugin)
-							remove(unmatched, i)
-							found = true
-							break
-						end
-					end
-					if not found then
-						-- ln("  - INFO:  Partial for '%s' plugin.", oldFullName)
-						insert(newPlugins.partials, oldFullName)
-					end
-				end
-			end
-
-			for newName, plugins in pairs(newPluginNames) do
-				if #plugins.partials ~= #plugins.unmatched then
-					for _,oldFullName in ipairs(plugins.partials) do
-						ln("  - ERROR: GUI Scan %s plugin unmatched: %s", newType, oldFullName)
-						errorCount = errorCount + 1
-					end
-
-					for _,plugin in ipairs(plugins.unmatched) do
-						local newFullName = plugin.name
-						if plugin.theme then
-							newFullName = plugin.theme .." - "..newFullName
-						end
-						ln("  - ERROR: File Scan %s plugin unmatched: %s\n\t\t%s", newType, newFullName, plugin.path)
-						errorCount = errorCount + 1
-					end
-				end
-			end
-
-			--------------------------------------------------------------------------------
-			-- If all results matched:
-			--------------------------------------------------------------------------------
-			if errorCount == 0 then
-				ln("  - SUCCESS: %s all matched!\n", newType)
-			else
-				ln("  - ERROR: %s had %d errors!\n", newType, errorCount)
-			end
-			failed = failed or (errorCount ~= 0)
-		else
-			ln(" - SKIPPING: Could not find settings for: %s (%s)", newType, language)
-		end
-	end
-
-	return not failed, value
+    for newType, scanner in pairs(pluginScanners) do
+        log.df(" - Scanning for '%s' in '%s'.", newType, locale.code)
+        local oldPlugins = scanner()
+        if oldPlugins then
+            local newPlugins = fcp:plugins():ofType(newType, locale)
+            for _, oldFullName in pairs(oldPlugins) do
+                local found = false
+                for _,plugin in ipairs(newPlugins) do
+                    if plugin.name == oldFullName or
+                    plugin.theme and (plugin.theme .. " - " .. plugin.name == oldFullName) or
+                    --------------------------------------------------------------------------------
+                    -- This is a workaround for some strange MotionVFX Plugins
+                    -- (i.e. mFlare 2/SCI-FI/UFO Glimmer)
+                    -- The theme is "SCI-FI", but it's labelled as "Sci-Fi" in Final Cut Pro's UI.
+                    --------------------------------------------------------------------------------
+                    plugin.theme and (plugin.theme:lower() .. " - " .. plugin.name:lower() == oldFullName:lower()) then
+                        found = true
+                    end
+                end
+                if not found then
+                    log.df("   - Missing %s plugin: %s", newType, oldFullName)
+                end
+            end
+        end
+    end
+    log.df("Scan complete!")
+    openConsole()
 end
 
-function mod.checkAll()
-	local failed, value = false, ""
-	for _,language in ipairs(fcp:getSupportedLanguages()) do
-		local ok, result = mod.check(langauge)
-		failed = failed or not ok
-		value = value .. result .. "\n"
-	end
-	return not failed, value
+-- cp.apple.finalcutpro.plugins.guiscan.checkAllPluginsInAllLanguages() -> none
+-- Function
+-- Compares the list of plugins created via file scanning to that produced by GUI scanning.
+-- A detailed report is output in the Error Log.
+--
+-- Parameters:
+--  * None
+--
+-- Returns:
+--  * None
+function mod.checkAllPluginsInAllLanguages()
+    for _,locale in ipairs(fcp.app:supportedLocales()) do
+        mod.checkAllPlugins(locale)
+    end
 end
 
 return mod

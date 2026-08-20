@@ -1,9 +1,3 @@
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
---                   C  O  M  M  A  N  D  P  O  S  T                          --
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
 --- === plugins.core.action.activator ===
 ---
 --- This module provides provides a way of activating choices provided by action handlers.
@@ -23,55 +17,56 @@
 --- to instances of this activator, so disabling "videoEffect" in the "foobar" activator
 --- will not affect the "yadayada" activator.
 
---------------------------------------------------------------------------------
---
--- EXTENSIONS:
---
---------------------------------------------------------------------------------
+local require                   = require
 
---------------------------------------------------------------------------------
--- Logger:
---------------------------------------------------------------------------------
-local log                       = require("hs.logger").new("activator")
+local log                       = require "hs.logger".new "activator"
 
---------------------------------------------------------------------------------
--- Hammerspoon Extensions:
---------------------------------------------------------------------------------
-local application               = require("hs.application")
-local chooser                   = require("hs.chooser")
-local drawing                   = require("hs.drawing")
-local fnutils                   = require("hs.fnutils")
-local inspect                   = require("hs.inspect") -- luacheck: ignore
-local menubar                   = require("hs.menubar")
-local mouse                     = require("hs.mouse")
-local screen                    = require("hs.screen")
-local timer                     = require("hs.timer")
+local application               = require "hs.application"
+local chooser                   = require "hs.chooser"
+local drawing                   = require "hs.drawing"
+local eventtap                  = require "hs.eventtap"
+local fnutils                   = require "hs.fnutils"
+local host                      = require "hs.host"
+local image                     = require "hs.image"
+local inspect                   = require "hs.inspect"
+local menubar                   = require "hs.menubar"
+local mouse                     = require "hs.mouse"
+local screen                    = require "hs.screen"
+local timer                     = require "hs.timer"
+local toolbar                   = require "hs.webview.toolbar"
 
---------------------------------------------------------------------------------
--- CommandPost Extensions:
---------------------------------------------------------------------------------
-local config                    = require("cp.config")
-local idle                      = require("cp.idle")
-local prop                      = require("cp.prop")
+local config                    = require "cp.config"
+local Do                        = require "cp.rx.go.Do"
+local Given                     = require "cp.rx.go.Given"
+local rx                        = require "cp.rx"
 
---------------------------------------------------------------------------------
--- 3rd Party Extensions:
---------------------------------------------------------------------------------
-local _                         = require("moses")
+local i18n                      = require "cp.i18n"
+local idle                      = require "cp.idle"
+local prop                      = require "cp.prop"
+local tools                     = require "cp.tools"
 
---------------------------------------------------------------------------------
---
--- THE MODULE:
---
---------------------------------------------------------------------------------
-local activator = {}
-activator.mt = {}
-activator.mt.__index = activator.mt
+local moses                     = require "moses"
+local class                     = require "middleclass"
+local lazy                      = require "cp.lazy"
 
-local sort, insert              = table.sort, table.insert
 local concat                    = fnutils.concat
+local doAfter                   = timer.doAfter
 local format                    = string.format
+local imageFromPath             = image.imageFromPath
+local infoForBundleID           = application.infoForBundleID
+local insert                    = table.insert
+local Observable                = rx.Observable
+local pack                      = table.pack
+local sort                      = table.sort
+local spairs                    = tools.spairs
+local split                     = tools.split
+local uuid                      = host.uuid
 
+local activator = class("core.action.activator"):include(lazy)
+
+-- PACKAGE -> string
+-- Constant
+-- The Package ID.
 local PACKAGE = "action.activator."
 
 -- applyHiddenTo(choice, hidden) -> none
@@ -102,78 +97,133 @@ end
 -- plugins.core.action.activator.new(id, manager)
 -- Constructor
 -- Creates a new `activator` instance with the specified ID and action manager
-function activator.new(id, manager)
-    local o = {
-        _id             = id,
-        _manager        = manager,
-        _chooser        = nil,      -- the actual hs.chooser
-    }
+function activator:initialize(id, manager)
+    self._id = id
+    self._manager = manager
+    self._chooser = nil
+    self._prefix = PACKAGE .. id .. "."
+    self._bundleID = nil
+    self._bundleIDIcon = nil
+end
 
-    prop.extend(o, activator.mt)
+--- plugins.core.action.activator:setBundleID(bundleID, icon, displayName) -> self
+--- Method
+--- Sets a bundle ID to use for filtering purposes.
+---
+--- Parameters:
+---  * bundleID - An application bundle ID as string.
+---  * icon - An application icon as an `hs.image` object.
+---  * displayName - The application display name as a string.
+---
+--- Returns:
+---  * Self
+function activator:setBundleID(bundleID, icon, displayName)
+    self._bundleID = bundleID
+    self._bundleIDIcon = icon
+    self._bundleIDDisplayName = displayName
 
-    local prefix = PACKAGE .. id .. "."
+    --------------------------------------------------------------------------------
+    -- We need to reset the chooser, so that the toolbar get re-created,
+    -- next time it's called:
+    --------------------------------------------------------------------------------
+    self._chooser = nil
 
-    --- plugins.core.action.activator.searchSubText <cp.prop: boolean>
-    --- Field
-    --- If `true`, allow users to search the subtext value.
-    o.searchSubText = config.prop(prefix .. "searchSubText", true):bind(o)
+    return self
+end
 
-    --- plugins.core.action.activator.lastQueryRemembered <cp.prop: boolean>
-    --- Field
-    --- If `true`, remember the last query.
-    o.lastQueryRemembered = config.prop(prefix .. "lastQueryRemembered", true):bind(o)
+--- plugins.core.action.activator.searchSubText <cp.prop: boolean>
+--- Field
+--- If `true`, allow users to search the subtext value.
+function activator.lazy.prop:searchSubText()
+    return config.prop(self._prefix .. "searchSubText", true)
+end
 
-    --- plugins.core.action.activator.lastQueryValue <cp.prop: string>
-    --- Field
-    --- The last query value.
-    o.lastQueryValue = config.prop(prefix .. "lastQueryValue", ""):bind(o)
+--- plugins.core.action.activator.lastQueryRemembered <cp.prop: boolean>
+--- Field
+--- If `true`, remember the last query.
+function activator.lazy.prop:lastQueryRemembered()
+    return config.prop(self._prefix .. "lastQueryRemembered", true)
+end
 
-    --- plugins.core.action.activator.showHidden <cp.prop: boolean>
-    --- Field
-    --- If `true`, hidden items are shown.
-    o.showHidden = config.prop(prefix .. "showHidden", false):bind(o)
+--- plugins.core.action.activator.lastQueryValue <cp.prop: string>
+--- Field
+--- The last query value.
+function activator.lazy.prop:lastQueryValue()
+    return config.prop(self._prefix .. "lastQueryValue", "")
+end
+
+--- plugins.core.action.activator.lastRows <cp.prop: number>
+--- Field
+--- The last number of rows. Defaults to 10.
+function activator.lazy.prop:lastRows()
+    return config.prop(self._prefix .. "lastRows", 10)
+end
+
+--- plugins.core.action.activator.lastRows <cp.prop: number>
+--- Field
+--- The last width of the Search Console. Defaults to 40.
+function activator.lazy.prop:lastWidth()
+    return config.prop(self._prefix .. "lastWidth", 50)
+end
+
+--- plugins.core.action.activator.showHidden <cp.prop: boolean>
+--- Field
+--- If `true`, hidden items are shown.
+function activator.lazy.prop:showHidden()
+    return config.prop(self._prefix .. "showHidden", false)
     -- refresh the chooser list if this status changes.
-    :watch(function() o:refreshChooser() end)
+    :watch(function() self:refreshChooser() end)
+end
 
-    -- plugins.core.action.activator._allowedHandlers <cp.prop: string>
-    -- Field
-    -- The ID of a single handler to source
-    o._allowedHandlers = prop.THIS(nil):bind(o)
+-- plugins.core.action.activator._allowedHandlers <cp.prop: string>
+-- Field
+-- The ID of a single handler to source
+function activator.lazy.prop._allowedHandlers()
+    return prop.THIS(nil)
+end
 
-    --- plugins.core.action.activator:allowedHandlers <cp.prop: table of handlers; read-only>
-    --- Field
-    --- Contains all handlers that are allowed in this activator.
-    o.allowedHandlers = o._manager.handlers:mutate(function(handlers)
-        local allowed = {}
-        local allowedIds = o:_allowedHandlers()
+--- plugins.core.action.activator:allowedHandlers <cp.prop: table of handlers; read-only>
+--- Field
+--- Contains all handlers that are allowed in this activator.
+function activator.lazy.prop:allowedHandlers()
+    return self._manager.handlers:mutate(
+        function(original)
+            local handlers = original()
+            local allowed = {}
+            local allowedIds = self:_allowedHandlers()
 
-        for i,handler in pairs(handlers) do
-            if allowedIds == nil or allowedIds[i] then
-                allowed[i] = handler
+            for theID,handler in pairs(handlers) do
+                if allowedIds == nil or allowedIds[theID] then
+                    allowed[theID] = handler
+                end
             end
+
+            return allowed
         end
+    )
+end
 
-        return allowed
-    end):bind(o)
+-- plugins.core.action.activator._disabledHandlers <cp.prop: table of booleans>
+-- Field
+-- Table of disabled handlers. If the ID is present with a value of `true`, it's disabled.
+function activator.lazy.prop:_disabledHandlers()
+    return config.prop(self._prefix .. "disabledHandlers", {})
+    :watch(function() self:refreshChooser() end)
+end
 
-    -- plugins.core.action.activator._disabledHandlers <cp.prop: table of booleans>
-    -- Field
-    -- Table of disabled handlers. If the ID is present with a value of `true`, it's disabled.
-    o._disabledHandlers = config.prop(prefix .. "disabledHandlers", {}):bind(o)
-    :watch(function() o:refreshChooser() end)
-
-    --- plugins.core.action.activator.activeHandlers <cp.prop: table of handlers>
-    --- Field
-    --- Contains the table of active handlers. A handler is active if it is both allowed and enabled.
-    --- The handler ID is the key, so use `pairs` to iterate the list. E.g.:
-    ---
-    --- ```lua
-    --- for id,handler in pairs(activator:activeHandlers()) do
-    ---     ...
-    --- end
-    --- ```
-    o.activeHandlers = prop(function(self)
-        local handlers = self:allowedHandlers()
+--- plugins.core.action.activator.activeHandlers <cp.prop: table of handlers>
+--- Field
+--- Contains the table of active handlers. A handler is active if it is both allowed and enabled.
+--- The handler ID is the key, so use `pairs` to iterate the list. E.g.:
+---
+--- ```lua
+--- for id,handler in pairs(activator:activeHandlers()) do
+---     ...
+--- end
+--- ```
+function activator.lazy.prop:activeHandlers()
+    return self.allowedHandlers:mutate(function(original)
+        local handlers = original()
         local result = {}
 
         local disabled = self._disabledHandlers()
@@ -184,52 +234,65 @@ function activator.new(id, manager)
         end
 
         return result
-    end):bind(o)
-    :monitor(o._disabledHandlers)
-    :monitor(manager.handlers)
+    end)
+    :monitor(self._disabledHandlers)
+end
 
-    --- plugins.core.action.activator.hiddenChoices <cp.prop: table of booleans>
-    --- Field
-    --- Contains the set of choice IDs which are hidden in this activator, mapped to a boolean value.
-    --- If set to `true`, the choice is hidden.
-    o.hiddenChoices = config.prop(prefix .. "hiddenChoices", {}):cached():bind(o)
+--- plugins.core.action.activator.query <cp.prop: string>
+--- Field
+--- The current "query" value for the activator.
+function activator.lazy.prop:query()
+    return prop.THIS(nil)
+    :watch(function() doAfter(0, function() self:refreshChooser() end) end)
+end
 
-    --- plugins.core.action.activator.favoriteChoices <cp.prop: table of booleans>
-    --- Field
-    --- Contains the set of choice IDs which are favorites in this activator, mapped to a boolean value.
-    --- If set to `true`, the choice is a favorite.
-    o.favoriteChoices = config.prop(prefix .. "favoriteChoices", {}):cached():bind(o)
-    :watch(function() timer.doAfter(1.0, function() o:sortChoices() end) end)
+--- plugins.core.action.activator.hiddenChoices <cp.prop: table of booleans>
+--- Field
+--- Contains the set of choice IDs which are hidden in this activator, mapped to a boolean value.
+--- If set to `true`, the choice is hidden.
+function activator.lazy.prop:hiddenChoices()
+    return config.prop(self._prefix .. "hiddenChoices", {}):cached()
+end
 
-    --- plugins.core.action.activator.popularChoices <cp.prop: table of integers>
-    --- Field
-    --- Keeps track of how popular particular choices are. Returns a table of choice IDs
-    --- mapped to the number of times they have been activated.
-    o.popularChoices = config.prop(prefix .. "popularChoices", {}):cached():bind(o)
-    :watch(function() timer.doAfter(1.0, function() o:sortChoices() end) end)
+--- plugins.core.action.activator.favoriteChoices <cp.prop: table of booleans>
+--- Field
+--- Contains the set of choice IDs which are favorites in this activator, mapped to a boolean value.
+--- If set to `true`, the choice is a favorite.
+function activator.lazy.prop:favoriteChoices()
+    return config.prop(self._prefix .. "favoriteChoices", {}):cached()
+    :watch(function() doAfter(1.0, function() self:sortChoices() end) end)
+end
 
-    --- plugins.core.action.activator.configurable <cp.prop: boolean>
-    --- Field
-    --- If `true` (the default), the activator can be configured by right-clicking on the main chooser.
-    o.configurable = config.prop(prefix .. "configurable", true):cached():bind(o)
+--- plugins.core.action.activator.popularChoices <cp.prop: table of integers>
+--- Field
+--- Keeps track of how popular particular choices are. Returns a table of choice IDs
+--- mapped to the number of times they have been activated.
+function activator.lazy.prop:popularChoices()
+    return config.prop(self._prefix .. "popularChoices", {}):cached()
+    :watch(function() doAfter(1.0, function() self:sortChoices() end) end)
+end
 
-    return o
+--- plugins.core.action.activator.configurable <cp.prop: boolean>
+--- Field
+--- If `true` (the default), the activator can be configured by right-clicking on the main chooser.
+function activator.lazy.prop:configurable()
+    return config.prop(self._prefix .. "configurable", true):cached()
 end
 
 --- plugins.core.action.activator:preloadChoices([afterSeconds]) -> activator
 --- Method
---- Indicates the activator should preload the choices after a number of seconds.
---- Defaults to 0 seconds if no value is provided.
+--- Indicates the activator should preload the choices after a number of seconds. Defaults to 0 seconds if no value is provided.
 ---
 --- Parameters:
 ---  * `afterSeconds`    - The number of seconds to wait before preloading.
 ---
 --- Returns:
 ---  * The activator.
-function activator.mt:preloadChoices(afterSeconds)
+function activator:preloadChoices(afterSeconds)
     afterSeconds = afterSeconds or 0
     idle.queue(afterSeconds, function()
-        self:_findChoices()
+        -- log.df("Preloading choices for '%s'", self._id)
+        self:allChoices()
     end)
     return self
 end
@@ -243,7 +306,7 @@ end
 ---
 --- Returns:
 ---  * The activator ID.
-function activator.mt:id()
+function activator:id()
     return self._id
 end
 
@@ -256,23 +319,22 @@ end
 ---
 --- Returns:
 ---  * The action handler, or `nil`.
-function activator.mt:getActiveHandler(id)
+function activator:getActiveHandler(id)
     return self:activeHandlers()[id]
 end
 
---- plugins.core.action.activator:allowHandlers(...) -> boolean
+--- plugins.core.action.activator:allowHandlers(...) -> self
 --- Method
---- Specifies that only the handlers with the specified IDs will be active in
---- this activator. By default all handlers are allowed.
+--- Specifies that only the handlers with the specified IDs will be active in this activator. By default all handlers are allowed.
 ---
 --- Parameters:
 ---  * `...`     - The list of Handler ID strings to allow.
 ---
 --- Returns:
----  * `true` if the handlers were found.
-function activator.mt:allowHandlers(...)
+---  * Self
+function activator:allowHandlers(...)
     local allowed = {}
-    for _,id in ipairs(table.pack(...)) do -- luacheck: ignore
+    for _,id in ipairs(pack(...)) do
         if self._manager.getHandler(id) then
             allowed[id] = true
         else
@@ -280,6 +342,21 @@ function activator.mt:allowHandlers(...)
         end
     end
     self._allowedHandlers(allowed)
+    return self
+end
+
+--- plugins.core.action.activator:toolbarIcons(table) -> self
+--- Method
+--- Sets which sections have an icon on the toolbar.
+---
+--- Parameters:
+---  * table - A table containing paths to all the toolbar icons. The key should be
+---            the handler ID, and the value should be the path to the icon.
+---
+--- Returns:
+---  * Self
+function activator:toolbarIcons(toolbarIcons)
+    self._toolbarIcons = toolbarIcons
     return self
 end
 
@@ -292,13 +369,14 @@ end
 ---
 --- Returns:
 ---  * `true` if the handler exists and was disabled.
-function activator.mt:disableHandler(id)
+function activator:disableHandler(id)
     if self._manager.getHandler(id) == nil then
         return false
     end
     local dh = self:_disabledHandlers()
     dh[id] = true
     self:_disabledHandlers(dh)
+    self:refreshChooser()
     return true
 end
 
@@ -311,44 +389,98 @@ end
 ---
 --- Returns:
 ---  * `true` if the handler exists and was enabled.
-function activator.mt:enableHandler(id)
+function activator:enableHandler(id)
     if self._manager.getHandler(id) == nil then
         return false
     end
     local dh = self:_disabledHandlers()
     dh[id] = nil
     self:_disabledHandlers(dh)
+    self:refreshChooser()
     return true
 end
 
---- plugins.core.action.activator:enableAllHandlers() -> nothing
+--- plugins.core.action.activator:enableHandlers(groupID) -> none
+--- Method
+--- Enables the all allowed handlers of a specific group, and disables the everything else.
+---
+--- Parameters:
+---  * groupID - The group ID to enable
+---
+--- Returns:
+---  * None
+function activator:enableHandlers(groupID)
+    local disabledHandlers = {}
+    local allowedHandlers = self:allowedHandlers()
+    for id,_ in pairs(allowedHandlers) do
+        local idComponents = split(id, "_")
+        local currentGroupID = idComponents and idComponents[1]
+        if currentGroupID == groupID then
+            disabledHandlers[id] = nil
+        else
+            disabledHandlers[id] = true
+        end
+    end
+    self:_disabledHandlers(disabledHandlers)
+    self:refreshChooser()
+end
+
+--- plugins.core.action.activator:enableAllHandlers([groupID]) -> none
 --- Method
 --- Enables the all allowed handlers.
 ---
 --- Parameters:
----  * None
+---  * groupID - An optional group ID to only enable all handlers of a specific group
 ---
 --- Returns:
----  * Nothing
-function activator.mt:enableAllHandlers()
-    self._disabledHandlers:set(nil)
+---  * None
+function activator:enableAllHandlers(groupID)
+    if groupID then
+        local dh = self:_disabledHandlers()
+        local allowedHandlers = self:allowedHandlers()
+        for id,_ in pairs(allowedHandlers) do
+            local idComponents = split(id, "_")
+            local currentGroupID = idComponents and idComponents[1]
+            if currentGroupID == groupID then
+                dh[id] = nil
+            end
+        end
+        self:_disabledHandlers(dh)
+    else
+        self._disabledHandlers:set(nil)
+    end
+    self:refreshChooser()
 end
 
---- plugins.core.action.activator:disableAllHandlers() -> nothing
+--- plugins.core.action.activator:disableAllHandlers([groupID]) -> none
 --- Method
 --- Disables the all allowed handlers.
 ---
 --- Parameters:
----  * None
+---  * groupID - An optional group ID to only disable all handlers of a specific group
 ---
 --- Returns:
----  * Nothing
-function activator.mt:disableAllHandlers()
-    local dh = {}
-    for id,_ in pairs(self:allowedHandlers()) do
-        dh[id] = true
+---  * None
+function activator:disableAllHandlers(groupID)
+    if groupID then
+        local dh = self:_disabledHandlers()
+        local allowedHandlers = self:allowedHandlers()
+        for id,_ in pairs(allowedHandlers) do
+            local idComponents = split(id, "_")
+            local currentGroupID = idComponents and idComponents[1]
+            if currentGroupID == groupID then
+                dh[id] = true
+            end
+        end
+        self:_disabledHandlers(dh)
+    else
+        local dh = {}
+        for id,_ in pairs(self:allowedHandlers()) do
+            dh[id] = true
+        end
+        self:_disabledHandlers(dh)
     end
-    self:_disabledHandlers(dh)
+    self:refreshChooser()
 end
 
 --- plugins.core.action.activator:isDisabledHandler(id) -> boolean
@@ -360,7 +492,7 @@ end
 ---
 --- Returns:
 ---  * `true` if the handler is disabled.
-function activator.mt:isDisabledHandler(id)
+function activator:isDisabledHandler(id)
     local dh = self:_disabledHandlers()
     return dh[id] == true
 end
@@ -374,7 +506,7 @@ end
 ---
 --- Returns:
 ---  * The choice or `nil` if not found
-function activator.mt:findChoice(id)
+function activator:findChoice(id)
     for _,choice in ipairs(self:allChoices()) do
         if choice.id == id then
             return choice
@@ -392,7 +524,7 @@ end
 ---
 --- Returns:
 ---  * `true` if successfully hidden otherwise `false`.
-function activator.mt:hideChoice(id)
+function activator:hideChoice(id)
     if id then
         --------------------------------------------------------------------------------
         -- Update the list of hidden choices:
@@ -421,7 +553,7 @@ end
 ---
 --- Returns:
 ---  * `true` if successfully unhidden otherwise `false`.
-function activator.mt:unhideChoice(id)
+function activator:unhideChoice(id)
     if id then
         local hidden = self:hiddenChoices()
         hidden[id] = nil
@@ -448,7 +580,7 @@ end
 ---
 --- Returns:
 ---  * `true` if currently hidden otherwise `false`.
-function activator.mt:isHiddenChoice(id)
+function activator:isHiddenChoice(id)
     return self:hiddenChoices()[id] == true
 end
 
@@ -461,7 +593,7 @@ end
 ---
 --- Returns:
 ---  * `true` if currently hidden.
-function activator.mt:isFavoriteChoice(id)
+function activator:isFavoriteChoice(id)
     local favorites = self:favoriteChoices()
     return id and favorites and favorites[id] == true
 end
@@ -475,7 +607,7 @@ end
 ---
 --- Returns:
 ---  * `true` if successfully favorited otherwise `false`.
-function activator.mt:favoriteChoice(id)
+function activator:favoriteChoice(id)
     if id then
         local favorites = self:favoriteChoices()
         favorites[id] = true
@@ -501,14 +633,13 @@ end
 ---
 --- Returns:
 ---  * `true` if successfully unfavorited.
-function activator.mt:unfavoriteChoice(id)
+function activator:unfavoriteChoice(id)
     if id then
         local favorites = self:favoriteChoices()
         favorites[id] = nil
         self:favoriteChoices(favorites)
         local choice = self:findChoice(id)
         if choice then choice.favorite = nil end
-
         --------------------------------------------------------------------------------
         -- Update the chooser list:
         --------------------------------------------------------------------------------
@@ -527,7 +658,7 @@ end
 ---
 --- Returns:
 ---  * The number of times the choice has been executed.
-function activator.mt:getPopularity(id)
+function activator:getPopularity(id)
     if id then
         local index = self:popularChoices()
         return index[id] or 0
@@ -545,7 +676,7 @@ end
 ---
 --- Returns:
 ---  * `true` if successfully unfavourited, otherwise `false`.
-function activator.mt:incPopularity(choice, id)
+function activator:incPopularity(choice, id)
     if id then
         local index = self:popularChoices()
         local pop = (index[id] or 0) + 1
@@ -562,149 +693,291 @@ function activator.mt:incPopularity(choice, id)
     end
 end
 
+-- _sortChoices(choices, query) -> table
+-- Function
+-- Sorts choices.
+--
+-- Parameters:
+--  * choices - a table of choices
+--  * query - the current query string
+--
+-- Returns:
+--  * A sorted table of choices
+local function _sortChoices(choices, query)
+    local queryLen = query and query:len() or 0
+
+    return sort(choices, function(a, b)
+        --------------------------------------------------------------------------------
+        -- Exact query match gets first priority:
+        --------------------------------------------------------------------------------
+        if queryLen > 0 then
+            local aExact = a.exactMatch == 1 and a.text:len() == queryLen
+            local bExact = b.exactMatch == 1 and b.text:len() == queryLen
+
+            if aExact and not bExact then
+                return true
+            elseif not aExact and bExact then
+                return false
+            end
+        end
+
+        --------------------------------------------------------------------------------
+        -- Favorites next:
+        --------------------------------------------------------------------------------
+        local afav = a.favorite
+        local bfav = b.favorite
+        if afav and not bfav then
+            return true
+        elseif bfav and not afav then
+            return false
+        end
+
+        --------------------------------------------------------------------------------
+        -- Prioritise fields that start with query string:
+        --
+        -- REMINDER: a.text could be a hs.styledtext object
+        --------------------------------------------------------------------------------
+        if queryLen > 0 then
+            local aStartsWithQ = a.exactMatch == 1
+            local bStartsWithQ = b.exactMatch == 1
+
+            if aStartsWithQ and not bStartsWithQ then
+                return true
+            elseif not aStartsWithQ and bStartsWithQ then
+                return false
+            end
+        end
+
+        --------------------------------------------------------------------------------
+        -- Then popularity, if specified:
+        --------------------------------------------------------------------------------
+        local apop = a.popularity or 0
+        local bpop = b.popularity or 0
+        if apop > bpop then
+            return true
+        elseif bpop > apop then
+            return false
+        end
+
+        --------------------------------------------------------------------------------
+        -- Then text by alphabetical order in lowercase:
+        --------------------------------------------------------------------------------
+        local aa = a.text:lower()
+        local bb = b.text:lower()
+
+        if aa < bb then
+            return true
+        elseif bb < aa then
+            return false
+        end
+
+        --------------------------------------------------------------------------------
+        -- Then subText by alphabetical order in lowercase:
+        --------------------------------------------------------------------------------
+        local asub = a.subText or ""
+        local bsub = b.subText or ""
+        return asub:lower() < bsub:lower()
+    end)
+end
+
 --- plugins.core.action.activator:sortChoices() -> boolean
 --- Method
---- Sorts the current set of choices in the activator. It takes into account
---- whether it's a favorite (first priority) and its overall popularity.
+--- Sorts the current set of choices in the activator. It takes into account whether it's a favorite (first priority) and its overall popularity.
 ---
 --- Parameters:
 ---  * None
 ---
 --- Returns:
 ---  * `true` if the action executed successfully, otherwise `false`.
-function activator.mt:sortChoices()
+function activator:sortChoices()
     if self._choices then
-        return sort(self._choices, function(a, b)
-            --------------------------------------------------------------------------------
-            -- Favorites get first priority:
-            --------------------------------------------------------------------------------
-            local afav = a.favorite
-            local bfav = b.favorite
-            if afav and not bfav then
-                return true
-            elseif bfav and not afav then
-                return false
-            end
-
-            --------------------------------------------------------------------------------
-            -- Then popularity, if specified:
-            --------------------------------------------------------------------------------
-            local apop = a.popularity or 0
-            local bpop = b.popularity or 0
-            if apop > bpop then
-                return true
-            elseif bpop > apop then
-                return false
-            end
-
-            --------------------------------------------------------------------------------
-            -- Then text by alphabetical order:
-            --------------------------------------------------------------------------------
-            if a.text < b.text then
-                return true
-            elseif b.text < a.text then
-                return false
-            end
-
-            --------------------------------------------------------------------------------
-            -- Then subText by alphabetical order:
-            --------------------------------------------------------------------------------
-            local asub = a.subText or ""
-            local bsub = b.subText or ""
-            return asub < bsub
-        end)
+        return _sortChoices(self._choices)
     end
+    return true
 end
 
 --- plugins.core.action.activator:allChoices() -> table
 --- Method
---- Returns a table of all available choices, even if hidden. Choices from
---- disabled action handlers are not included.
+--- Returns a table of all available choices, even if hidden. Choices from disabled action handlers are not included.
 ---
 --- Parameters:
 ---  * None
 ---
 --- Returns:
 ---  * Table of choices that can be displayed by an `hs.chooser`.
-function activator.mt:allChoices()
+function activator:allChoices()
     if not self._choices then
-        self:_findChoices()
+        self:_findChoices():After(5)
     end
     return self._choices
 end
 
---- plugins.core.action.activator:unhiddenChoices() -> table
---- Method
---- Returns a table with visible choices.
----
---- Parameters:
----  * None
----
---- Returns:
----  * Table of choices that can be displayed by an `hs.chooser`.
-function activator.mt:unhiddenChoices()
-    return _.filter(self:allChoices(), function(_,choice) return not choice.hidden end)
-end
-
 --- plugins.core.action.activator:activeChoices() -> table
 --- Method
---- Returns a table with active choices. If [showHidden](#showHidden) is set to `true`  hidden
---- items are returned, otherwise they are not.
+--- Returns a table with active choices. If a `query` is set, only choices containing the provided substring are returned. If [showHidden](#showHidden) is set to `true`  hidden items are returned, otherwise they are not.
 ---
 --- Parameters:
 ---  * None
 ---
 --- Returns:
 ---  * Table of choices that can be displayed by an `hs.chooser`.
-function activator.mt:activeChoices()
+function activator:activeChoices()
     local showHidden = self:showHidden()
     local disabledHandlers = self:_disabledHandlers()
+    local query = self:query()
 
-    return _.filter(self:allChoices(), function(_,choice) return (not choice.hidden or showHidden) and not disabledHandlers[choice.type] end)
+    query = query and query:lower()
+
+    local queryLen = query and query:len() or 0
+    local searchSubText = self:searchSubText()
+
+    local queryWords = {}
+    if queryLen > 0 then
+        for w in string.gmatch(query, "([^%s]+)") do
+            insert(queryWords, w)
+        end
+    end
+
+    local results = moses.select(self:allChoices(), function(choice)
+        if (showHidden or not choice.hidden) and not disabledHandlers[choice.type] then
+            --------------------------------------------------------------------------------
+            -- Check if we are filtering by query:
+            --------------------------------------------------------------------------------
+            local choiceText = choice.text
+
+            --------------------------------------------------------------------------------
+            -- Make sure the choiceText is actually valid:
+            --------------------------------------------------------------------------------
+            if not choiceText then
+                log.ef("[plugins.core.action.activator] Invalid Choice: %s", choice and inspect(choice))
+                return false
+            end
+
+            --------------------------------------------------------------------------------
+            -- Get a lower case version of the choice text:
+            --------------------------------------------------------------------------------
+            local choiceTextLower = choiceText and choiceText:lower()
+
+            --------------------------------------------------------------------------------
+            -- Don't show deprecated actions in the Search Console:
+            --------------------------------------------------------------------------------
+            if choiceText:sub(1, 11) == "Deprecated:" then
+                return false
+            end
+
+            if queryLen > 0 then
+                local exactMatch = choice.text:lower():find(query, 1, true)
+
+                local textMatch = true
+                for _, v in pairs(queryWords) do
+                    if not choiceTextLower:find(v, 1, true) then
+                        textMatch = false
+                        break
+                    end
+                end
+
+                --------------------------------------------------------------------------------
+                -- Store the match index for sorting later:
+                --------------------------------------------------------------------------------
+                choice.textMatch = textMatch
+                choice.exactMatch = exactMatch
+
+                if exactMatch or textMatch then
+                    return true
+                elseif searchSubText == true and choice.subText and choice.subText:lower():find(query, 1, true) then
+                    return true
+                end
+                return false
+            else
+                choice.textMatch = nil
+                choice.exactMatch = nil
+            end
+            return true
+        end
+        return false
+    end)
+
+    _sortChoices(results, query)
+
+    return results
 end
 
--- plugins.core.action.activator:_findChoices() -> nothing
+local LOADING_CHOICES = {
+    {
+        ["text"] = i18n("loading") .. "...",
+    }
+}
+
+-- plugins.core.action.activator:_findChoices() -> cp.rx.Statement
 -- Method
 -- Finds and sorts all choices from enabled handlers. They are available via
 -- the [choices](#choices) or [allChoices](#allChoices) properties.
-function activator.mt:_findChoices()
-    --------------------------------------------------------------------------------
-    -- Check if we are already watching the handlers:
-    --------------------------------------------------------------------------------
-    local unwatched = not self._watched
-    self._watched = true
+--
+-- Parameters:
+--  * None
+--
+-- Returns:
+--  * None
+function activator:_findChoices()
 
-    local result = {}
-    for _,handler in pairs(self:allowedHandlers()) do
-        local choices = handler:choices()
-        if choices then
-            concat(result, choices:getChoices())
-        end
-        --------------------------------------------------------------------------------
-        -- Check if we should watch the handler choices:
-        --------------------------------------------------------------------------------
-        if unwatched then
-            handler.choices:watch(function() self:refresh() end)
-        end
-    end
+    self._choices = LOADING_CHOICES
 
-    local popularity = self:popularChoices()
-    local favorites = self:favoriteChoices()
-    local hidden = self:hiddenChoices()
-    for _,choice in ipairs(result) do
-        local id = choice.id
-        applyHiddenTo(choice, hidden[id])
-        choice.popularity = popularity[id] or 0
-        choice.favorite = favorites[id] == true
-    end
-    self._choices = result
-    self:sortChoices()
+    return Do(function()
+        --------------------------------------------------------------------------------
+        -- Check if we are already watching the handlers:
+        --------------------------------------------------------------------------------
+        local unwatched = not self._watched
+        self._watched = true
+
+        local popularity = self:popularChoices()
+        local favorites = self:favoriteChoices()
+        local hidden = self:hiddenChoices()
+
+        local result = {}
+        self._choices = result
+
+        local handlers = self:allowedHandlers()
+
+        return Given(Observable.fromTable(handlers, pairs))
+        :Then(function(handler)
+            local choices = handler:choices()
+            if choices then
+                local choicesTable = choices:getChoices()
+
+                for _,choice in ipairs(choicesTable) do
+                    local id = choice.id
+                    applyHiddenTo(choice, hidden[id])
+                    choice.popularity = popularity[id] or 0
+                    choice.favorite = favorites[id] == true
+                end
+
+                concat(result, choicesTable)
+            end
+            --------------------------------------------------------------------------------
+            -- Check if we should watch the handler choices:
+            --------------------------------------------------------------------------------
+            if unwatched then
+                handler.choices:watch(function() self:refresh() end)
+            end
+        end)
+        :ThenYield()
+    end)
+    :Finally(function()
+        self:refreshChooser()
+    end)
 end
 
---- plugins.core.action.activator:refresh()
+
+--- plugins.core.action.activator:refresh() -> none
 --- Method
 --- Clears the existing set of choices and requests new ones from enabled action handlers.
-function activator.mt:refresh()
+---
+--- Parameters:
+---  * None
+---
+--- Returns:
+---  * None
+function activator:refresh()
     self._choices = nil
 end
 
@@ -715,38 +988,85 @@ activator.reducedTransparency = prop.new(function()
     return screen.accessibilitySettings()["ReduceTransparency"]
 end)
 
--- initChooser(executeFn, rightClickFn, choicesFn, searchSubText) -> `hs.chooser` object
--- Method
--- Gets a hs.chooser
---
--- Parameters:
---  * executeFn - A function that will be called when the chooser is dismissed. It should accept one parameter, which will be nil if the user dismissed the chooser window, otherwise it will be a table containing whatever information you supplied for the item the user chose.
---  * rightClickFn - A function that will be called whenever the user right clicks on a choice. If this parameter is omitted, the existing callback will be removed.
---  * choicesFn - A function to call when the list of choices is needed.
---
--- Returns:
---  * A `hs.chooser` object
-local function initChooser(executeFn, rightClickFn, choicesFn, searchSubText)
+--- plugins.core.action.activator:updateSelectedToolbarIcon() -> none
+--- Method
+--- Updates the selected toolbar icon.
+---
+--- Parameters:
+---  * None
+---
+--- Returns:
+---  * None
+function activator:updateSelectedToolbarIcon()
+    local toolbarIcons = self._toolbarIcons
+    local t = self._toolbar
+    if t and toolbarIcons then
+        --------------------------------------------------------------------------------
+        -- Determine if "Show All For App" should be selected:
+        --------------------------------------------------------------------------------
+        local showAllForAppActive = true
+        local bundleID = self._bundleID
+        if bundleID then
+            for i,_ in pairs(self:allowedHandlers()) do
+                -- i = global_applications
+                local isMatch = i:sub(1, bundleID:len()) == bundleID
+                if self:isDisabledHandler(i) then
+                    -- Handler is disabled:
+                    if isMatch then
+                        showAllForAppActive = false
+                        break
+                    end
+                else
+                    -- Handler is enabled:
+                    if not isMatch then
+                        showAllForAppActive = false
+                        break
+                    end
+                end
+            end
+        else
+            showAllForAppActive = false
+        end
 
-    local c = chooser.new(executeFn)
-        :bgDark(true)
-        :rightClickCallback(rightClickFn)
-        :choices(choicesFn)
-        :searchSubText(searchSubText)
-        :refreshChoicesCallback()
+        --------------------------------------------------------------------------------
+        -- Determine if "Show All" should be selected:
+        --------------------------------------------------------------------------------
+        local allHandlersActive = true
+        if showAllForAppActive then
+            allHandlersActive = false
+        else
+            for id,_ in pairs(toolbarIcons) do
+                local soloed = true
+                for i,_ in pairs(self:allowedHandlers()) do
+                    if self:isDisabledHandler(i) then
+                        allHandlersActive = false
+                    end
+                    if i ~= id and not self:isDisabledHandler(i) then
+                        soloed = false
+                        break
+                    end
+                end
+                if soloed and not self:isDisabledHandler(id) then
+                    t:selectedItem(id)
+                    return
+                end
+            end
+        end
 
-    if activator.reducedTransparency() then
-        c:fgColor(nil)
-         :subTextColor(nil)
-    else
-        c:fgColor(drawing.color.x11.snow)
-         :subTextColor(drawing.color.x11.snow)
+        --------------------------------------------------------------------------------
+        -- Select the correct toolbar icon, or deselect all:
+        --------------------------------------------------------------------------------
+        if showAllForAppActive then
+            t:selectedItem("showAllForApp")
+        elseif allHandlersActive then
+            t:selectedItem("showAll")
+        else
+            t:selectedItem(nil)
+        end
     end
-
-    return c
 end
 
---- plugins.core.action.activator:refreshChooser() -> `hs.chooser` object
+--- plugins.core.action.activator:chooser() -> `hs.chooser` object
 --- Method
 --- Gets a hs.chooser
 ---
@@ -755,7 +1075,7 @@ end
 ---
 --- Returns:
 ---  * A `hs.chooser` object
-function activator.mt:chooser()
+function activator:chooser()
 
     --------------------------------------------------------------------------------
     -- Reload Console if Reduce Transparency has been toggled:
@@ -770,17 +1090,208 @@ function activator.mt:chooser()
     -- Create new Chooser if needed:
     --------------------------------------------------------------------------------
     if not self._chooser then
-        self._chooser = initChooser(
-            function(result) self:activate(result) end,
-            function(index) self:rightClickMain(index) end,
-            function() return self:activeChoices() end,
-            self:searchSubText()
-        )
+
+        --------------------------------------------------------------------------------
+        -- Create new toolbar:
+        --------------------------------------------------------------------------------
+        local t = toolbar.new(uuid())
+            :canCustomize(true)
+            :autosaves(true)
+            :sizeMode("small")
+
+        --------------------------------------------------------------------------------
+        -- Add "Show All" button for specific bundle ID:
+        --------------------------------------------------------------------------------
+        if self._bundleID then
+            local icon = self._bundleIDIcon or imageFromPath(config.basePath .. "/plugins/core/console/images/showApp.png")
+            local label = self._bundleIDDisplayName or i18n("showAll")
+            t:addItems({
+                id = "showAllForApp",
+                label = label,
+                priority = 1,
+                image = icon,
+                selectable = true,
+                fn = function()
+                    local bundleID = self._bundleID
+                    self:enableHandlers(bundleID)
+                end,
+            })
+        end
+
+        --------------------------------------------------------------------------------
+        -- Add "Show All" button:
+        --------------------------------------------------------------------------------
+        t:addItems({
+            id = "showAll",
+            label = i18n("showAll"),
+            priority = 2,
+            image = imageFromPath(config.basePath .. "/plugins/core/console/images/showAll.png"),
+            selectable = true,
+            fn = function()
+                self:enableAllHandlers()
+            end,
+        })
+
+        local toolbarIcons = self._toolbarIcons
+        if toolbarIcons and next(toolbarIcons) ~= nil then
+            --------------------------------------------------------------------------------
+            -- Add buttons for each section that has an icon:
+            --------------------------------------------------------------------------------
+            for id, item in spairs(toolbarIcons, function(x,a,b) return x[b].priority > x[a].priority end) do
+                t:addItems({
+                    id = id,
+                    label = i18n(id .. "_action"),
+                    tooltip = i18n(id .. "_action"),
+                    image = imageFromPath(item.path),
+                    priority = item.priority + 2,
+                    selectable = true,
+                    fn = function()
+                        local soloed = true
+                        for i,_ in pairs(self:allowedHandlers()) do
+                            if i ~= id and not self:isDisabledHandler(i) then
+                                soloed = false
+                                break
+                            end
+                        end
+                        if soloed then
+                            self:enableAllHandlers()
+                            t:selectedItem("showAll")
+                        else
+                            self:disableAllHandlers()
+                            self:enableHandler(id)
+                        end
+                    end,
+                })
+            end
+        end
+
+        local executeFn = function(result)
+            if self._eventtap then
+                self._eventtap:stop()
+                self._eventtap = nil
+            end
+            self:activate(result)
+        end
+        local rightClickFn = function(index) self:rightClickMain(index) end
+        local choicesFn = function() return self:activeChoices() end
+        local searchSubText = self:searchSubText()
+
+        local updateConsole = function(id)
+            if id == "showAll" then
+                self:enableAllHandlers()
+            elseif id == "showAllForApp" then
+                local bundleID = self._bundleID
+                self:enableHandlers(bundleID)
+            else
+                local soloed = true
+                for i,_ in pairs(self:allowedHandlers()) do
+                    if i ~= id and not self:isDisabledHandler(i) then
+                        soloed = false
+                        break
+                    end
+                end
+                if soloed then
+                    self:enableAllHandlers()
+                    self._toolbar:selectedItem("showAll")
+                else
+                    self:disableAllHandlers()
+                    self:enableHandler(id)
+                end
+            end
+        end
+
+        local setupEventtap = function()
+            if not self._eventtap then
+                self._eventtap = eventtap.new({eventtap.event.types.keyDown}, function(event)
+                    if event:getFlags():containExactly({"fn", "alt"}) then
+                        if event:getKeyCode() == 123 then
+                            if self._toolbar then
+                                local visibleItems = self._toolbar:visibleItems()
+                                local selectedItem = self._toolbar:selectedItem()
+                                if not selectedItem then
+                                    self._toolbar:selectedItem(visibleItems[1])
+                                    updateConsole(visibleItems[1])
+                                elseif selectedItem == visibleItems[1] then
+                                    self._toolbar:selectedItem(visibleItems[#visibleItems])
+                                    updateConsole(visibleItems[#visibleItems])
+                                else
+                                    local current
+                                    for i=1, #visibleItems do
+                                        if visibleItems[i] == selectedItem then
+                                            current = i
+                                            break
+                                        end
+                                    end
+                                    if current then
+                                        self._toolbar:selectedItem(visibleItems[current - 1])
+                                        updateConsole(visibleItems[current - 1])
+                                    end
+                                end
+                            end
+                        elseif event:getKeyCode() == 124 then
+                            if self._toolbar then
+                                local visibleItems = self._toolbar:visibleItems()
+                                local selectedItem = self._toolbar:selectedItem()
+                                if not selectedItem then
+                                    self._toolbar:selectedItem(visibleItems[1])
+                                    updateConsole(visibleItems[1])
+                                elseif selectedItem == visibleItems[#visibleItems] then
+                                    self._toolbar:selectedItem(visibleItems[1])
+                                    updateConsole(visibleItems[1])
+                                else
+                                    local current
+                                    for i=1, #visibleItems do
+                                        if visibleItems[i] == selectedItem then
+                                            current = i
+                                            break
+                                        end
+                                    end
+                                    if current then
+                                        self._toolbar:selectedItem(visibleItems[current + 1])
+                                        updateConsole(visibleItems[current + 1])
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end)
+            end
+            if self._eventtap then
+                self._eventtap:start()
+            end
+        end
+
+        local c = chooser.new(executeFn)
+            :bgDark(true)
+            :rightClickCallback(rightClickFn)
+            :choices(choicesFn)
+            :searchSubText(searchSubText)
+            :showCallback(setupEventtap)
+            :queryChangedCallback(function(value)
+                self.query:set(value)
+            end)
+
+        if t then
+            c:attachedToolbar(t)
+            t:inTitleBar(true)
+        end
+
+        if activator.reducedTransparency() then
+            c:fgColor(nil)
+             :subTextColor(nil)
+        else
+            c:fgColor(drawing.color.x11.snow)
+             :subTextColor(drawing.color.x11.snow)
+        end
+
+        self._chooser = c
+        self._toolbar = t
+
     end
     return self._chooser
 end
 
---- plugins.core.action.activator:refreshChooser()
+--- plugins.core.action.activator:refreshChooser() -> none
 --- Method
 --- Refreshes a Chooser.
 ---
@@ -789,28 +1300,90 @@ end
 ---
 --- Returns:
 ---  * None
-function activator.mt:refreshChooser()
+function activator:refreshChooser()
     local theChooser = self:chooser()
-    theChooser:refreshChoicesCallback()
+    if theChooser then
+        theChooser:refreshChoicesCallback(true)
+    end
 end
 
---- plugins.core.action.activator:show()
+--- plugins.core.action.activator:refreshChooser() -> none
 --- Method
---- Shows a chooser listing the available actions. When selected by the user,
---- the [onActivate](#onActivate) function is called.
+--- Refreshes a Chooser.
 ---
 --- Parameters:
 ---  * None
 ---
 --- Returns:
 ---  * None
-function activator.mt:show()
+function activator:resize()
+    local theChooser = self:chooser()
+    if theChooser then
+        theChooser:width(self:lastWidth())
+        theChooser:rows(self:lastRows())
+        theChooser:hide()
+        theChooser:show()
+    end
+end
+
+--- plugins.core.action.activator:isVisible() -> boolean
+--- Method
+--- Checks if the chooser is currently displayed.
+---
+--- Parameters:
+---  * None
+---
+--- Returns:
+---  * A boolean, `true` if the chooser is displayed on screen, `false` if not.
+function activator:isVisible()
+    local theChooser = self:chooser()
+    return theChooser and theChooser:isVisible()
+end
+
+-- plugins.core.action._refreshWatchers -> table
+-- Variable
+-- A table of all the refresh watchers.
+activator._refreshWatchers = {}
+
+--- plugins.core.action.activator:show() -> boolean
+--- Method
+--- Shows a chooser listing the available actions. When selected by the user, the [onActivate](#onActivate) function is called.
+---
+--- Parameters:
+---  * None
+---
+--- Returns:
+---  * `true` if successful
+function activator:show()
+    --------------------------------------------------------------------------------
+    -- Watch for any handler updates that might happen after the Search Console
+    -- has already loaded (for example, menubar actions which might take a while
+    -- to populate):
+    --------------------------------------------------------------------------------
+    local allowedHandlers = self._allowedHandlers() or {}
+    if next(allowedHandlers) then
+        for id, _ in pairs(allowedHandlers) do
+            if not self._refreshWatchers[id] then
+                self._refreshWatchers[id] = true
+                local handler = self._manager.getHandler(id)
+                handler.choices:watch(function()
+                    if self:isVisible() then
+                        doAfter(0.1, function()
+                            self:refreshChooser()
+                        end)
+                    end
+                end)
+            end
+        end
+    end
+
+    --------------------------------------------------------------------------------
+    -- Get Chooser:
+    --------------------------------------------------------------------------------
     local theChooser = self:chooser()
     if theChooser and theChooser:isVisible() then
         return
     end
-
-    self._frontApp = application.frontmostApplication()
 
     --------------------------------------------------------------------------------
     -- Refresh Chooser:
@@ -818,25 +1391,45 @@ function activator.mt:show()
     self:refreshChooser()
 
     --------------------------------------------------------------------------------
-    -- Remember last query?
+    -- Remember Last Query:
     --------------------------------------------------------------------------------
     local chooserRememberLast = self:lastQueryRemembered()
-    if not chooserRememberLast then
-        theChooser:query("")
-    else
+    if chooserRememberLast then
         theChooser:query(self:lastQueryValue())
+    else
+        theChooser:query("")
     end
+
+    --------------------------------------------------------------------------------
+    -- Search Console Subtext:
+    --------------------------------------------------------------------------------
+    theChooser:searchSubText(self:searchSubText())
+
+    --------------------------------------------------------------------------------
+    -- Set Placeholder Text:
+    --------------------------------------------------------------------------------
+    theChooser:placeholderText(i18n("searchConsole"))
+
+    --------------------------------------------------------------------------------
+    -- Update Selected Toolbar Icon:
+    --------------------------------------------------------------------------------
+    self:updateSelectedToolbarIcon()
+
+    --------------------------------------------------------------------------------
+    -- Set width and rows:
+    --------------------------------------------------------------------------------
+    theChooser:width(self:lastWidth())
+    theChooser:rows(self:lastRows())
 
     --------------------------------------------------------------------------------
     -- Show Console:
     --------------------------------------------------------------------------------
-    theChooser:searchSubText(self:searchSubText())
-    theChooser:show()
+    Do(function() theChooser:show() end):After(0)
 
     return true
 end
 
---- plugins.core.action.activator:hide()
+--- plugins.core.action.activator:hide() -> none
 --- Method
 --- Hides a chooser listing the available actions.
 ---
@@ -845,14 +1438,9 @@ end
 ---
 --- Returns:
 ---  * None
-function activator.mt:hide()
+function activator:hide()
     local theChooser = self:chooser()
     if theChooser then
-
-        --------------------------------------------------------------------------------
-        -- Hide Chooser:
-        --------------------------------------------------------------------------------
-        theChooser:hide()
 
         --------------------------------------------------------------------------------
         -- Save Last Query to Settings:
@@ -861,30 +1449,48 @@ function activator.mt:hide()
             self.lastQueryValue:set(theChooser:query())
         end
 
-        if self._frontApp then
-            self._frontApp:activate()
-        end
+        --------------------------------------------------------------------------------
+        -- Hide Chooser:
+        --------------------------------------------------------------------------------
+        theChooser:hide()
+
+    end
+end
+
+--- plugins.core.action.activator:toggle() -> none
+--- Method
+--- Shows or hides the chooser.
+---
+--- Parameters:
+---  * None
+---
+--- Returns:
+---  * None
+function activator:toggle()
+    if self:isVisible() then
+        self:hide()
+    else
+        self:show()
     end
 end
 
 --- plugins.core.action.activator:onActivate(activateFn) -> activator
 --- Method
---- Registers the provided function to handle 'activate' actions, when the user selects
---- an item in the main chooser.
----
---- By default, the activator will 'execute' the action, but you can choose to provide an
---- alternative action. It will get passed the `handler` object and the `action` table. Eg:
----
---- ```lua
---- activator:onActivate(function(handler, action))
---- ```
+--- Registers the provided function to handle 'activate' actions, when the user selects an item in the main chooser.
 ---
 --- Parameters:
 ---  * `activateFn`      - The function to call when an item is activated.
 ---
 --- Returns:
 ---  * The activator.
-function activator.mt:onActivate(activateFn)
+---
+--- Notes:
+---  * By default, the activator will 'execute' the action, but you can choose to provide an alternative action. It will get passed the `handler` object and the `action` table. Eg:
+---
+--- ```lua
+--- activator:onActivate(function(handler, action))
+--- ```
+function activator:onActivate(activateFn)
     self._onActivate = activateFn
     return self
 end
@@ -900,7 +1506,7 @@ end
 --
 -- Returns:
 --  * `true` is successful otherwise `false`
-function activator.mt._onActivate(handler, action, text)
+function activator._onActivate(handler, action, text)
     if handler:execute(action) then
         return true
     else
@@ -918,7 +1524,7 @@ end
 ---
 --- Returns:
 ---  * None
-function activator.mt:activate(result)
+function activator:activate(result)
     self:hide()
     --------------------------------------------------------------------------------
     -- If something was selected:
@@ -947,8 +1553,8 @@ end
 ---
 --- Returns:
 ---  * None
-function activator.mt:rightClickMain(index)
-    self:rightClickAction(index, true)
+function activator:rightClickMain(index)
+    self:rightClickAction(index)
 end
 
 --- plugins.core.action.activator:rightClickAction(index) -> none
@@ -960,7 +1566,7 @@ end
 ---
 --- Returns:
 ---  * None
-function activator.mt:rightClickAction(index)
+function activator:rightClickAction(index)
 
     local theChooser = self:chooser()
 
@@ -985,11 +1591,7 @@ function activator.mt:rightClickAction(index)
                 choiceMenu,
                 {
                     title = i18n("activatorUnfavoriteAction"),
-                    fn = function()
-                        self:unfavoriteChoice(choice.id)
-                        self:refreshChooser()
-                        theChooser:show()
-                    end
+                    fn = function() self:unfavoriteChoice(choice.id) end,
                 }
             )
         else
@@ -997,11 +1599,7 @@ function activator.mt:rightClickAction(index)
                 choiceMenu,
                 {
                     title = i18n("activatorFavoriteAction"),
-                    fn = function()
-                        self:favoriteChoice(choice.id)
-                        self:refreshChooser()
-                        theChooser:show()
-                    end
+                    fn = function() self:favoriteChoice(choice.id) end,
                 }
             )
         end
@@ -1012,11 +1610,7 @@ function activator.mt:rightClickAction(index)
                 choiceMenu,
                 {
                     title = i18n("activatorUnhideAction"),
-                    fn = function()
-                        self:unhideChoice(choice.id)
-                        self:refreshChooser()
-                        theChooser:show()
-                    end
+                    fn = function() self:unhideChoice(choice.id) end,
                 }
             )
         else
@@ -1024,67 +1618,196 @@ function activator.mt:rightClickAction(index)
                 choiceMenu,
                 {
                     title = i18n("activatorHideAction"),
-                    fn = function()
-                        self:hideChoice(choice.id)
-                        self:refreshChooser()
-                        theChooser:show()
-                    end
+                    fn = function() self:hideChoice(choice.id) end
                 }
             )
         end
+
+        insert(choiceMenu, { title = "-" })
     end
+
+    --------------------------------------------------------------------------------
+    -- Search Console Width:
+    --------------------------------------------------------------------------------
+    local ofScreen = i18n("ofScreen")
+    insert(choiceMenu, {
+        title = i18n("width"),
+        menu = {
+            { title = "40% " .. ofScreen, fn = function() self:lastWidth(40); self:resize() end, checked = self:lastWidth() == 40 },
+            { title = "50% " .. ofScreen, fn = function() self:lastWidth(50); self:resize() end, checked = self:lastWidth() == 50 },
+            { title = "60% " .. ofScreen, fn = function() self:lastWidth(60); self:resize() end, checked = self:lastWidth() == 60 },
+            { title = "70% " .. ofScreen, fn = function() self:lastWidth(70); self:resize() end, checked = self:lastWidth() == 70 },
+            { title = "80% " .. ofScreen, fn = function() self:lastWidth(80); self:resize() end, checked = self:lastWidth() == 80 },
+            { title = "90% " .. ofScreen, fn = function() self:lastWidth(90); self:resize() end, checked = self:lastWidth() == 90 },
+        },
+    })
+
+    --------------------------------------------------------------------------------
+    -- Search Console Height:
+    --
+    -- Due to a bug in Hammerspoon, rows don't take into account the toolbar,
+    -- so we need to add an offset:
+    --
+    -- https://github.com/Hammerspoon/hammerspoon/issues/2179
+    --------------------------------------------------------------------------------
+    local offset = 1
+    local rowsLabel = string.lower(i18n("rows"))
+    insert(choiceMenu, {
+        title = i18n("height"),
+        menu = {
+            { title = "5 " .. rowsLabel, fn = function() self:lastRows(5 + offset); self:resize() end, checked = self:lastRows() == 5 + offset },
+            { title = "6 " .. rowsLabel, fn = function() self:lastRows(6 + offset); self:resize() end, checked = self:lastRows() == 6 + offset },
+            { title = "7 " .. rowsLabel, fn = function() self:lastRows(7 + offset); self:resize() end, checked = self:lastRows() == 7 + offset },
+            { title = "8 " .. rowsLabel, fn = function() self:lastRows(8 + offset); self:resize() end, checked = self:lastRows() == 8 + offset },
+            { title = "9 " .. rowsLabel, fn = function() self:lastRows(9 + offset); self:resize() end, checked = self:lastRows() == 9 + offset },
+            { title = "10 " .. rowsLabel, fn = function() self:lastRows(10 + offset); self:resize() end, checked = self:lastRows() == 10 + offset },
+            { title = "11 " .. rowsLabel, fn = function() self:lastRows(11 + offset); self:resize() end, checked = self:lastRows() == 11 + offset },
+            { title = "12 " .. rowsLabel, fn = function() self:lastRows(12 + offset); self:resize() end, checked = self:lastRows() == 12 + offset },
+            { title = "13 " .. rowsLabel, fn = function() self:lastRows(13 + offset); self:resize() end, checked = self:lastRows() == 13 + offset },
+            { title = "14 " .. rowsLabel, fn = function() self:lastRows(14 + offset); self:resize() end, checked = self:lastRows() == 14 + offset },
+            { title = "15 " .. rowsLabel, fn = function() self:lastRows(15 + offset); self:resize() end, checked = self:lastRows() == 15 + offset },
+        },
+    })
 
     if self:configurable() then
         --------------------------------------------------------------------------------
         -- Separator:
         --------------------------------------------------------------------------------
         insert(choiceMenu, { title = "-" })
-        insert(choiceMenu, { title = i18n("rememberLastQuery"),     fn=function() self.lastQueryRemembered:toggle() end, checked = self:lastQueryRemembered() })
-        insert(choiceMenu, { title = i18n("searchSubtext"),         fn=function() self.searchSubText:toggle() end, checked = self:searchSubText() })
-        insert(choiceMenu, { title = i18n("activatorShowHidden"),   fn=function() self.showHidden:toggle() end, checked = self:showHidden() })
+        insert(choiceMenu, { title = i18n("rememberLastQuery"),     fn=function() self.lastQueryRemembered:toggle(); self:refreshChooser() end, checked = self:lastQueryRemembered() })
+        insert(choiceMenu, { title = i18n("searchSubtext"),         fn=function() self.searchSubText:toggle(); theChooser:searchSubText(self:searchSubText()); self:refreshChooser(); end, checked = self:searchSubText() })
+        insert(choiceMenu, { title = i18n("activatorShowHidden"),   fn=function() self.showHidden:toggle(); self:refreshChooser() end, checked = self:showHidden() })
+        insert(choiceMenu, { title = "-" })
 
         --------------------------------------------------------------------------------
-        -- The 'Sections' menu:
+        -- The 'Show Action Group' menu:
         --------------------------------------------------------------------------------
-        local sections = { title = i18n("consoleSections") }
-        local actionItems = {}
+        local sections = { title = i18n("showActionGroups") }
+
+        --------------------------------------------------------------------------------
+        -- Get list of allowed handler group names:
+        --------------------------------------------------------------------------------
+        local allowedHandlers = self:allowedHandlers()
+        local allowedGroupNames = {}
+        for i,_ in pairs(allowedHandlers) do
+            local idComponents = split(i, "_")
+            local groupID = idComponents and idComponents[1]
+            if not allowedGroupNames[groupID] then
+                allowedGroupNames[groupID] = true
+            end
+        end
+        table.sort(allowedGroupNames)
+
+        --------------------------------------------------------------------------------
+        -- Create sub-menus per action group:
+        --------------------------------------------------------------------------------
         local allEnabled = true
         local allDisabled = true
 
-        for id,_ in pairs(self:allowedHandlers()) do
-            local enabled = not self:isDisabledHandler(id)
-            allEnabled = allEnabled and enabled
-            allDisabled = allDisabled and not enabled
-            actionItems[#actionItems + 1] = {
-                title = i18n(format("%s_action", id)) or id,
-                fn=function()
-                    if enabled then
-                        self:disableHandler(id)
-                    else
-                        self:enableHandler(id)
-                    end
-                    self:refreshChooser()
-                end,
-                checked = enabled,
+        local allEnabledInGroup = {}
+        local allDisabledInGroup = {}
+
+        local groupItems = {}
+        for currentGroupID, _ in pairs(allowedGroupNames) do
+
+            allEnabledInGroup[currentGroupID] = true
+            allDisabledInGroup[currentGroupID] = true
+
+            local submenu = {}
+            for id,_ in pairs(allowedHandlers) do
+                local idComponents = split(id, "_")
+                local groupID = idComponents and idComponents[1]
+                if groupID == currentGroupID then
+                    local enabled = not self:isDisabledHandler(id)
+                    allEnabled = allEnabled and enabled
+                    allDisabled = allDisabled and not enabled
+
+                    allEnabledInGroup[groupID] = allEnabledInGroup[groupID] and enabled
+                    allDisabledInGroup[groupID] = allDisabledInGroup[groupID] and not enabled
+
+                    local handler = self._manager.getHandler(id)
+                    local title = handler:label() or i18n(format("%s_action", id)) or id
+
+                    submenu[#submenu + 1] = {
+                        title = title,
+                        fn=function()
+                            if enabled then
+                                self:disableHandler(id)
+                            else
+                                self:enableHandler(id)
+                            end
+                            self:updateSelectedToolbarIcon()
+                        end,
+                        checked = enabled,
+                    }
+                end
+            end
+
+            sort(submenu, function(a, b) return string.lower(a.title) < string.lower(b.title) end)
+
+            local allSubmenu = {
+                { title = i18n("consoleSectionsShowAll"), fn = function()
+                    self:enableAllHandlers(currentGroupID)
+                    self:updateSelectedToolbarIcon()
+                end, disabled = allEnabledInGroup[currentGroupID] },
+                { title = i18n("consoleSectionsHideAll"), fn = function()
+                    self:disableAllHandlers(currentGroupID)
+                    self:updateSelectedToolbarIcon()
+                end, disabled = allDisabledInGroup[currentGroupID] },
+                { title = "-" }
+            }
+
+            concat(allSubmenu, submenu)
+
+            local title = i18n(format("%s_command_group", currentGroupID))
+            if not title then
+                local info = infoForBundleID(currentGroupID)
+                if info then
+                    title = info.CFBundleDisplayName or info.CFBundleName or info.CFBundleExecutable
+                end
+            end
+
+            groupItems[#groupItems + 1] = {
+                title = title or currentGroupID,
+                menu = allSubmenu,
             }
         end
 
-        sort(actionItems, function(a, b) return a.title < b.title end)
+        sort(groupItems, function(a, b) return string.lower(a.title) < string.lower(b.title) end)
 
         local allItems = {
-            { title = i18n("consoleSectionsShowAll"), fn = function() self:enableAllHandlers() end, disabled = allEnabled },
-            { title = i18n("consoleSectionsHideAll"), fn = function() self:disableAllHandlers() end, disabled = allDisabled },
+            { title = i18n("consoleSectionsShowAll"), fn = function()
+                self:enableAllHandlers()
+                self:updateSelectedToolbarIcon()
+            end, disabled = allEnabled },
+            { title = i18n("consoleSectionsHideAll"), fn = function()
+                self:disableAllHandlers()
+                self:updateSelectedToolbarIcon()
+            end, disabled = allDisabled },
             { title = "-" }
         }
-        fnutils.concat(allItems, actionItems)
+        concat(allItems, groupItems)
 
         sections.menu = allItems
 
         insert(choiceMenu, sections)
     end
 
+    insert(choiceMenu, { title = "-" })
+
+    insert(choiceMenu, {
+        title = i18n("searchConsoleShortcutTipOne"),
+        disabled = true,
+    })
+
+    insert(choiceMenu, {
+        title = i18n("searchConsoleShortcutTipTwo"),
+        disabled = true,
+    })
+
+
     self._rightClickMenubar:setMenu(choiceMenu):removeFromMenuBar()
-    self._rightClickMenubar:popupMenu(mouse.getAbsolutePosition())
+    self._rightClickMenubar:popupMenu(mouse.absolutePosition(), true)
 end
 
 return activator
